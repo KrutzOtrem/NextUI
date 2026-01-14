@@ -114,6 +114,16 @@ ifeq ($(PLATFORM), tg5040)
 	cp ./workspace/all/minarch/build/$(PLATFORM)/libbz2.* ./build/SYSTEM/$(PLATFORM)/lib/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/liblzma.* ./build/SYSTEM/$(PLATFORM)/lib/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/libzstd.* ./build/SYSTEM/$(PLATFORM)/lib/
+	# PDF manual libs
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libpoppler-glib.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libcairo.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libglib-2.0.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libgobject-2.0.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libgio-2.0.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libfreetype.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libfontconfig.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libpng16.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libjpeg.* ./build/SYSTEM/$(PLATFORM)/lib/ || true
 endif
 
 

@@ -71,6 +71,16 @@ all: clean libretro-common libsrm.a $(PREFIX_LOCAL)/include/msettings.h
 	cp $(PREFIX)/lib/libbz2.so.1.0 build/$(PLATFORM)
 	cp $(PREFIX)/lib/liblzma.so.5 build/$(PLATFORM)
 	cp $(PREFIX)/lib/libzstd.so.1 build/$(PLATFORM)
+	# Copy PDF manual dependencies
+	cp $(PREFIX)/lib/libpoppler-glib.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libcairo.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libglib-2.0.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libgobject-2.0.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libgio-2.0.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libfreetype.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libfontconfig.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libpng16.so* build/$(PLATFORM) || true
+	cp $(PREFIX)/lib/libjpeg.so* build/$(PLATFORM) || true
 	$(CC) $(SOURCE) -o $(PRODUCT) $(CFLAGS) $(LDFLAGS)
 endif
 
