@@ -43,6 +43,9 @@ ifeq ($(PLATFORM), tg5040)
 CFLAGS += -DHAS_WIFIMG -DHAS_BTMG
 LDFLAGS +=  -lwifimg -lwifid
 LDFLAGS +=  -lbtmg -lglib-2.0 -lgio-2.0 -lshared-mainloop -lbluetooth-internal -lasound -ljson-c
+# PDF Manual Support
+CFLAGS += `pkg-config --cflags poppler-glib cairo` -DENABLE_PDF_MANUAL
+LDFLAGS += `pkg-config --libs poppler-glib cairo`
 endif
 # CFLAGS  += -Wall -Wno-unused-variable -Wno-unused-function -Wno-format-overflow
 # CFLAGS  += -fsanitize=address -fno-common
