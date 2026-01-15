@@ -15,7 +15,6 @@ export PATH="$INSTALL_DIR/bin:$PATH"
 # PKG_CONFIG_PATH SETUP
 SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
 export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
-export PKG_CONFIG_LIBDIR="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH"
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
 
 # Parallel build
@@ -52,10 +51,13 @@ if ! command -v gperf &> /dev/null; then
         rm -rf usr
         cd "$WORK_DIR"
     fi
+else
+    echo "gperf found: $(command -v gperf)"
 fi
 
 # Ensure environment is set up for cross-compilation
 if [ -z "$CROSS_TRIPLE" ]; then
+    echo "CROSS_TRIPLE not set. Attempting to detect..."
     if which aarch64-nextui-linux-gnu-gcc >/dev/null 2>&1; then
         export CROSS_TRIPLE="aarch64-nextui-linux-gnu"
     elif [ -d "/opt/aarch64-nextui-linux-gnu/bin" ]; then
@@ -74,16 +76,18 @@ if [ -z "$CC" ]; then
     export LD="${CROSS_TRIPLE}-ld"
 fi
 
+echo "Host Triple: $CROSS_TRIPLE"
+
 # Versions
 PIXMAN_VER="0.42.2"
 CAIRO_VER="1.16.0"
-POPPLER_VER="22.02.0"
 FONTCONFIG_VER="2.14.2"
 FREETYPE_VER="2.13.0"
 
 # 1. Pixman
 cd "$WORK_DIR"
 if [ ! -d "pixman-$PIXMAN_VER" ]; then
+    echo "Downloading Pixman..."
     wget -c https://www.cairographics.org/releases/pixman-$PIXMAN_VER.tar.gz
     tar -xf pixman-$PIXMAN_VER.tar.gz
 fi
@@ -97,10 +101,12 @@ make install
 # 2. Freetype
 cd "$WORK_DIR"
 if [ ! -d "freetype-$FREETYPE_VER" ]; then
+    echo "Downloading Freetype..."
     wget -c https://download.savannah.gnu.org/releases/freetype/freetype-$FREETYPE_VER.tar.gz
     tar -xf freetype-$FREETYPE_VER.tar.gz
 fi
 cd "freetype-$FREETYPE_VER"
+echo "Configuring Freetype..."
 mkdir -p build
 cd build
 ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
@@ -111,6 +117,7 @@ make install
 cd "$WORK_DIR"
 if [ -d "fontconfig-$FONTCONFIG_VER" ]; then rm -rf "fontconfig-$FONTCONFIG_VER"; fi
 if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
+    echo "Downloading Fontconfig..."
     wget -c https://www.freedesktop.org/software/fontconfig/release/fontconfig-$FONTCONFIG_VER.tar.gz
     tar -xf fontconfig-$FONTCONFIG_VER.tar.gz
 fi
@@ -126,6 +133,7 @@ cd "$WORK_DIR"
 rm -rf cairo-1.17.*
 if [ -d "cairo-$CAIRO_VER" ]; then rm -rf "cairo-$CAIRO_VER"; fi
 if [ ! -d "cairo-$CAIRO_VER" ]; then
+    echo "Downloading Cairo..."
     wget -c https://www.cairographics.org/releases/cairo-$CAIRO_VER.tar.xz
     tar -xf cairo-$CAIRO_VER.tar.xz
 fi
@@ -138,89 +146,75 @@ export pixman_LIBS="-L$INSTALL_DIR/lib -lpixman-1"
 make -j$JOBS
 make install
 
-# 5. Poppler
+# 5. Poppler (Download Pre-compiled ARM64)
+# We use Debian Buster (Debian 10) as a safe baseline for glibc compatibility
+echo "Downloading pre-compiled Poppler ARM64 packages..."
 cd "$WORK_DIR"
-if [ -d "poppler-$POPPLER_VER" ]; then rm -rf "poppler-$POPPLER_VER"; fi
-if [ ! -d "poppler-$POPPLER_VER" ]; then
-    wget -c https://poppler.freedesktop.org/poppler-$POPPLER_VER.tar.xz
-    tar -xf poppler-$POPPLER_VER.tar.xz
+
+# URLs for libpoppler-glib8 and libpoppler82 (compatible versions from Buster)
+# Using http for better compatibility inside docker
+POPPLER_GLIB_DEB="libpoppler-glib8_0.71.0-5_arm64.deb"
+POPPLER_CORE_DEB="libpoppler82_0.71.0-5_arm64.deb"
+POPPLER_DEV_DEB="libpoppler-glib-dev_0.71.0-5_arm64.deb"
+
+# Clean old artifacts
+rm -f *.deb
+rm -rf extract_poppler
+
+# Download
+wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_GLIB_DEB
+wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_CORE_DEB
+wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_DEV_DEB
+
+mkdir -p extract_poppler
+cd extract_poppler
+
+# Extract function
+extract_deb() {
+    ar x "../$1"
+    if [ -f "data.tar.xz" ]; then tar -xf data.tar.xz; elif [ -f "data.tar.gz" ]; then tar -xf data.tar.gz; fi
+    rm -f control.tar.* data.tar.* debian-binary
+}
+
+extract_deb "$POPPLER_GLIB_DEB"
+extract_deb "$POPPLER_CORE_DEB"
+extract_deb "$POPPLER_DEV_DEB"
+
+echo "Installing Poppler files..."
+# Copy libs
+# Preserve links is important here
+cp -P -r usr/lib/aarch64-linux-gnu/* "$INSTALL_DIR/lib/"
+
+# Copy headers
+mkdir -p "$INSTALL_DIR/include"
+cp -r usr/include/poppler "$INSTALL_DIR/include/"
+
+# Cleanup
+cd "$WORK_DIR"
+rm -rf extract_poppler
+
+# Fix symlinks if needed (Debian often splits .so and .so.X)
+# We need libpoppler-glib.so pointing to the real file for linking
+cd "$INSTALL_DIR/lib"
+if [ ! -f "libpoppler-glib.so" ]; then
+    # Find the real file (e.g. libpoppler-glib.so.8)
+    REAL_LIB=$(ls libpoppler-glib.so.* | head -n 1)
+    if [ -n "$REAL_LIB" ]; then
+        ln -sf "$REAL_LIB" libpoppler-glib.so
+        echo "Created symlink for $REAL_LIB"
+    fi
 fi
-cd "poppler-$POPPLER_VER"
+if [ ! -f "libpoppler.so" ]; then
+    REAL_LIB=$(ls libpoppler.so.* | head -n 1)
+    if [ -n "$REAL_LIB" ]; then
+        ln -sf "$REAL_LIB" libpoppler.so
+        echo "Created symlink for $REAL_LIB"
+    fi
+fi
 
-# FORCE PATCH: Disable the check that disables the GLib wrapper
-# The original code is:
-# if(NOT GLIB2_FOUND)
-#   message(STATUS "GLib2 not found, disabling wrapper")
-#   set(ENABLE_GLIB OFF)
-# endif()
-# We replace it to force GLIB2_FOUND to TRUE or simply comment out the disabling logic
-echo "Patching CMakeLists.txt to force GLib wrapper..."
-sed -i 's/if(NOT GLIB2_FOUND)/if(FALSE)/g' CMakeLists.txt
-
-mkdir -p build
-cd build
-
-# Manually define all deps to force GLib wrapper
-SYS_ROOT="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc"
-SYS_INC="$SYS_ROOT/usr/include"
-SYS_LIB="$SYS_ROOT/usr/lib"
-
-# We must ensure compilation flags include glib paths since auto-detection might fail
-export CXXFLAGS="$CXXFLAGS -I$SYS_INC/glib-2.0 -I$SYS_LIB/glib-2.0/include -I$SYS_INC"
-export CFLAGS="$CFLAGS -I$SYS_INC/glib-2.0 -I$SYS_LIB/glib-2.0/include -I$SYS_INC"
-
-cmake .. \
-    -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
-    -DCMAKE_SYSTEM_NAME=Linux \
-    -DCMAKE_C_COMPILER="$CC" \
-    -DCMAKE_CXX_COMPILER="$CXX" \
-    -DENABLE_UTILS=OFF \
-    -DENABLE_QT5=OFF \
-    -DENABLE_QT6=OFF \
-    -DENABLE_LIBOPENJPEG=none \
-    -DENABLE_CPP=OFF \
-    -DENABLE_GLIB=ON \
-    -DENABLE_BOOST=OFF \
-    -DENABLE_LIBPNG=OFF \
-    -DCMAKE_DISABLE_FIND_PACKAGE_PNG=TRUE \
-    -DPNG_FOUND=FALSE \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_FLAGS="-DPNG_SKIP_SETJMP_CHECK" \
-    -DGLIB2_FOUND=TRUE \
-    -DGLIB2_INCLUDE_DIR="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
-    -DGLIB2_INCLUDE_DIRS="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
-    -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
-    -DGLIB2_LIBRARY="$SYS_LIB/libglib-2.0.so" \
-    -DGOBJECT_FOUND=TRUE \
-    -DGOBJECT_INCLUDE_DIR="$SYS_INC" \
-    -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
-    -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
-    -DGOBJECT_LIBRARY="$SYS_LIB/libgobject-2.0.so" \
-    -DGIO_FOUND=TRUE \
-    -DGIO_INCLUDE_DIR="$SYS_INC" \
-    -DGIO_INCLUDE_DIRS="$SYS_INC" \
-    -DGIO_LIBRARIES="$SYS_LIB/libgio-2.0.so" \
-    -DGIO_LIBRARY="$SYS_LIB/libgio-2.0.so" \
-    -DCAIRO_FOUND=TRUE \
-    -DCAIRO_INCLUDE_DIRS="$INSTALL_DIR/include/cairo" \
-    -DCAIRO_INCLUDE_DIR="$INSTALL_DIR/include/cairo" \
-    -DCAIRO_LIBRARIES="$INSTALL_DIR/lib/libcairo.so" \
-    -DCAIRO_LIBRARY="$INSTALL_DIR/lib/libcairo.so" \
-    -DFREETYPE_INCLUDE_DIRS="$INSTALL_DIR/include/freetype2" \
-    -DFREETYPE_LIBRARIES="$INSTALL_DIR/lib/libfreetype.so" \
-    -DFONTCONFIG_INCLUDE_DIR="$INSTALL_DIR/include" \
-    -DFONTCONFIG_LIBRARIES="$INSTALL_DIR/lib/libfontconfig.so" \
-    -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR" \
-    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-
-make -j$JOBS
-make install
-
-# Final verification
+# Verification
 if [ ! -f "$INSTALL_DIR/lib/libpoppler-glib.so" ]; then
-    echo "ERROR: libpoppler-glib.so was NOT built! Check CMake output for 'glib wrapper: no'."
+    echo "ERROR: Failed to install libpoppler-glib.so from binaries!"
     exit 1
 fi
 
