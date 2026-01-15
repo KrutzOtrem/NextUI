@@ -156,6 +156,11 @@ make install
 
 # 3. Fontconfig
 cd "$WORK_DIR"
+# Remove existing dir to force reconfiguration with new environment variables
+if [ -d "fontconfig-$FONTCONFIG_VER" ]; then
+    rm -rf "fontconfig-$FONTCONFIG_VER"
+fi
+
 if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
     echo "Downloading Fontconfig..."
     wget -c https://www.freedesktop.org/software/fontconfig/release/fontconfig-$FONTCONFIG_VER.tar.gz
@@ -175,6 +180,11 @@ make install
 
 # 4. Cairo
 cd "$WORK_DIR"
+# Clean cairo too to ensure it picks up the new fontconfig
+if [ -d "cairo-$CAIRO_VER" ]; then
+    rm -rf "cairo-$CAIRO_VER"
+fi
+
 if [ ! -d "cairo-$CAIRO_VER" ]; then
     echo "Downloading Cairo..."
     wget -c https://www.cairographics.org/snapshots/cairo-$CAIRO_VER.tar.xz
@@ -191,6 +201,11 @@ make install
 
 # 5. Poppler
 cd "$WORK_DIR"
+# Clean poppler too
+if [ -d "poppler-$POPPLER_VER" ]; then
+    rm -rf "poppler-$POPPLER_VER"
+fi
+
 if [ ! -d "poppler-$POPPLER_VER" ]; then
     echo "Downloading Poppler..."
     wget -c https://poppler.freedesktop.org/poppler-$POPPLER_VER.tar.xz
