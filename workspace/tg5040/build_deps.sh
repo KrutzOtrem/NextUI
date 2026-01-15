@@ -31,8 +31,17 @@ if ! command -v gperf &> /dev/null; then
     fi
     cd "gperf-$GPERF_VER"
     if [ ! -f Makefile ]; then
-        # Use system gcc for host tool
-        CC=gcc CXX=g++ ./configure --prefix="$INSTALL_DIR"
+        # Use system gcc for host tool and sanitize env to avoid cross-compiler pollution
+        # We run this in a subshell or just setting vars for this command to avoid messing up global state
+        echo "Configuring gperf for host..."
+        (
+            unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS
+            export CC=gcc
+            export CXX=g++
+            export CPP="gcc -E"
+            export CXXCPP="g++ -E"
+            ./configure --prefix="$INSTALL_DIR"
+        )
     fi
     make -j$JOBS
     make install
