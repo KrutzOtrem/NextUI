@@ -43,7 +43,7 @@ ifeq ($(PLATFORM), tg5040)
 # Force enable PDF support using manual paths to avoid pkg-config environment issues
 LOCAL_LIBS_DIR = /root/workspace/tg5040/libs
 # Manually add includes for all our built deps
-CFLAGS += -I$(LOCAL_LIBS_DIR)/include/poppler/glib -I$(LOCAL_LIBS_DIR)/include/cairo -I$(LOCAL_LIBS_DIR)/include/pixman-1 -I$(LOCAL_LIBS_DIR)/include/freetype2 -I$(LOCAL_LIBS_DIR)/include/fontconfig
+CFLAGS += -I$(LOCAL_LIBS_DIR)/include/poppler -I$(LOCAL_LIBS_DIR)/include/cairo -I$(LOCAL_LIBS_DIR)/include/pixman-1 -I$(LOCAL_LIBS_DIR)/include/freetype2 -I$(LOCAL_LIBS_DIR)/include/fontconfig
 # Add includes for system glib (using system pkg-config)
 CFLAGS += $(shell pkg-config --cflags glib-2.0 gio-2.0 gobject-2.0) -DENABLE_PDF_MANUAL
 
