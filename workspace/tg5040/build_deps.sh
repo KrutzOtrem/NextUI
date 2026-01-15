@@ -21,51 +21,54 @@ echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
 # 0. Install gperf (Host tool needed for fontconfig)
-# Trying to compile it proved difficult due to cross-compiler environment pollution.
-# Best approach: Install via apt if available, or download pre-compiled binary.
+# Previous attempts to compile gperf resulted in ARM binaries due to toolchain aliases.
+# We will download a pre-compiled x86_64 binary from Debian to be safe.
+
 if ! command -v gperf &> /dev/null; then
     echo "gperf not found."
 
-    # Try apt-get first (Debian/Ubuntu based images)
+    # Try apt-get first
     if command -v apt-get &> /dev/null; then
         echo "Attempting to install gperf via apt-get..."
-        # We need to update first usually, but try install directly just in case to save time/bandwidth
-        # ignoring errors to fall back to binary download
-        apt-get update && apt-get install -y gperf || echo "apt-get failed, falling back to binary download."
+        apt-get update && apt-get install -y gperf || echo "apt-get failed."
     fi
 
     # Check again
     if ! command -v gperf &> /dev/null; then
-        echo "Downloading pre-compiled gperf binary..."
-        # Static binary from a reliable source (e.g. Debian package or similar static build)
-        # Since finding a guaranteed static binary URL that works forever is hard,
-        # let's try to compile one LAST TIME but with a trick: make -e to override variables
-        # actually, the user approved "do what you must", so let's try the safest compilation method:
-        # separate source dir entirely from build to ensure no pollution.
+        echo "Downloading pre-compiled gperf binary (Debian amd64)..."
 
-        # Actually, let's just retry compilation but simpler:
-        # Use gperf 3.0.4, force PATH to NOT include cross compiler during configure/make.
-
-        GPERF_VER="3.0.4"
         cd "$WORK_DIR"
-        if [ -d "gperf-$GPERF_VER" ]; then rm -rf "gperf-$GPERF_VER"; fi
+        # Download gperf 3.1 amd64 deb
+        GPERF_DEB="gperf_3.1-1_amd64.deb"
+        if [ ! -f "$GPERF_DEB" ]; then
+            wget -c http://ftp.debian.org/debian/pool/main/g/gperf/$GPERF_DEB
+        fi
 
-        wget -c http://ftp.gnu.org/pub/gnu/gperf/gperf-$GPERF_VER.tar.gz
-        tar -xf gperf-$GPERF_VER.tar.gz
-        cd "gperf-$GPERF_VER"
+        # Extract it
+        # .deb is an ar archive containing debian-binary, control.tar.xz, data.tar.xz
+        # We can use the cross-compile ar if needed, ar format is portable
+        ar x "$GPERF_DEB"
 
-        echo "Compiling gperf with strictly sanitized PATH..."
-        (
-            # Save strict path
-            ORIG_PATH=$PATH
-            # Set PATH to only system paths to hide cross-compiler
-            export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            unset CC CXX CPP CXXCPP CROSS_COMPILE CROSS_TRIPLE AR LD NM RANLIB
+        # Extract data.tar.xz (contains usr/bin/gperf)
+        # We need to handle potentially different compression or tar naming depending on distro
+        if [ -f "data.tar.xz" ]; then
+            tar -xf data.tar.xz
+        elif [ -f "data.tar.gz" ]; then
+            tar -xf data.tar.gz
+        else
+            echo "Error: Could not find data.tar.* in deb package"
+            exit 1
+        fi
 
-            ./configure --prefix="$INSTALL_DIR"
-            make -j$JOBS
-            make install
-        )
+        # Move binary to our local bin
+        cp usr/bin/gperf "$INSTALL_DIR/bin/"
+        chmod +x "$INSTALL_DIR/bin/gperf"
+
+        echo "Installed pre-compiled gperf to $INSTALL_DIR/bin/gperf"
+
+        # Cleanup extraction
+        rm -rf usr
+
         cd "$WORK_DIR"
     fi
 else
