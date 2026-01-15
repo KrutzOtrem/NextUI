@@ -39,21 +39,28 @@ if ! command -v gperf &> /dev/null; then
     cd "gperf-$GPERF_VER"
 
     # Use system gcc for host tool and sanitize env to avoid cross-compiler pollution
-    # We run the entire build process in a subshell so variables don't leak out
-    # and outside variables don't leak in (via export overrides)
     echo "Configuring and building gperf for host..."
     (
         unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS CC CXX AR LD
-        export CC=gcc
-        export CPP="gcc -E"
+        # Force absolute path to avoid picking up cross-compiler aliases
+        export CC=/usr/bin/gcc
+        export CPP="/usr/bin/gcc -E"
+        # Explicitly tell configure we are building for the build machine
+        HOST_ARCH=$(uname -m)
 
         if [ ! -f Makefile ]; then
-             ./configure --prefix="$INSTALL_DIR"
+             ./configure --prefix="$INSTALL_DIR" --build=${HOST_ARCH}-linux-gnu --host=${HOST_ARCH}-linux-gnu
         fi
 
         make -j$JOBS
         make install
     )
+
+    # Verification step
+    if [ -f "$INSTALL_DIR/bin/gperf" ]; then
+        echo "Verifying gperf binary..."
+        file "$INSTALL_DIR/bin/gperf" || true
+    fi
 
     cd "$WORK_DIR"
 else
