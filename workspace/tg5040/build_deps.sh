@@ -56,6 +56,8 @@ if ! command -v gperf &> /dev/null; then
         rm -rf usr
         cd "$WORK_DIR"
     fi
+else
+    echo "gperf found: $(command -v gperf)"
 fi
 
 # Ensure environment is set up for cross-compilation
@@ -184,14 +186,26 @@ cmake .. \
     -DPNG_FOUND=FALSE \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-DPNG_SKIP_SETJMP_CHECK" \
+    -DGLIB2_FOUND=TRUE \
+    -DGLIB2_INCLUDE_DIR="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
     -DGLIB2_INCLUDE_DIRS="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
     -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
+    -DGLIB2_LIBRARY="$SYS_LIB/libglib-2.0.so" \
+    -DGOBJECT_FOUND=TRUE \
+    -DGOBJECT_INCLUDE_DIR="$SYS_INC" \
     -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
     -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
+    -DGOBJECT_LIBRARY="$SYS_LIB/libgobject-2.0.so" \
+    -DGIO_FOUND=TRUE \
+    -DGIO_INCLUDE_DIR="$SYS_INC" \
     -DGIO_INCLUDE_DIRS="$SYS_INC" \
     -DGIO_LIBRARIES="$SYS_LIB/libgio-2.0.so" \
+    -DGIO_LIBRARY="$SYS_LIB/libgio-2.0.so" \
+    -DCAIRO_FOUND=TRUE \
     -DCAIRO_INCLUDE_DIRS="$INSTALL_DIR/include/cairo" \
+    -DCAIRO_INCLUDE_DIR="$INSTALL_DIR/include/cairo" \
     -DCAIRO_LIBRARIES="$INSTALL_DIR/lib/libcairo.so" \
+    -DCAIRO_LIBRARY="$INSTALL_DIR/lib/libcairo.so" \
     -DFREETYPE_INCLUDE_DIRS="$INSTALL_DIR/include/freetype2" \
     -DFREETYPE_LIBRARIES="$INSTALL_DIR/lib/libfreetype.so" \
     -DFONTCONFIG_INCLUDE_DIR="$INSTALL_DIR/include" \
