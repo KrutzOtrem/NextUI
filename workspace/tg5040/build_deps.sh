@@ -13,13 +13,9 @@ mkdir -p "$INSTALL_DIR/bin"
 export PATH="$INSTALL_DIR/bin:$PATH"
 
 # PKG_CONFIG_PATH SETUP
-# We need our local libs AND the system libs (for glib-2.0)
-# Found system pkgconfig at: /opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig
 SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
-export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH"
-# Also set LIBDIR to be safe for cross-compilation
+export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
 export PKG_CONFIG_LIBDIR="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH"
-
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
 
 # Parallel build
@@ -32,17 +28,14 @@ echo "Installing to $INSTALL_DIR"
 if command -v gperf &> /dev/null; then
     echo "Checking existing gperf..."
     if ! gperf --version &> /dev/null; then
-        echo "Existing gperf is broken or incompatible. Removing it..."
         rm -f "$(command -v gperf)"
         hash -r 2>/dev/null || true
     fi
 fi
 
 if ! command -v gperf &> /dev/null; then
-    echo "gperf not found. Installing..."
     if command -v apt-get &> /dev/null; then
-        echo "Attempting to install gperf via apt-get..."
-        apt-get update && apt-get install -y gperf || echo "apt-get failed."
+        apt-get update && apt-get install -y gperf || true
     fi
 
     if ! command -v gperf &> /dev/null; then
@@ -55,17 +48,14 @@ if ! command -v gperf &> /dev/null; then
         if [ -f "data.tar.xz" ]; then tar -xf data.tar.xz; elif [ -f "data.tar.gz" ]; then tar -xf data.tar.gz; else echo "Error: Could not find data.tar.*"; exit 1; fi
         cp usr/bin/gperf "$INSTALL_DIR/bin/"
         chmod +x "$INSTALL_DIR/bin/gperf"
-        "$INSTALL_DIR/bin/gperf" --version || (echo "Error: Installed gperf binary is invalid!" && exit 1)
+        "$INSTALL_DIR/bin/gperf" --version || exit 1
         rm -rf usr
         cd "$WORK_DIR"
     fi
-else
-    echo "gperf found: $(command -v gperf)"
 fi
 
 # Ensure environment is set up for cross-compilation
 if [ -z "$CROSS_TRIPLE" ]; then
-    echo "CROSS_TRIPLE not set. Attempting to detect..."
     if which aarch64-nextui-linux-gnu-gcc >/dev/null 2>&1; then
         export CROSS_TRIPLE="aarch64-nextui-linux-gnu"
     elif [ -d "/opt/aarch64-nextui-linux-gnu/bin" ]; then
@@ -84,8 +74,6 @@ if [ -z "$CC" ]; then
     export LD="${CROSS_TRIPLE}-ld"
 fi
 
-echo "Host Triple: $CROSS_TRIPLE"
-
 # Versions
 PIXMAN_VER="0.42.2"
 CAIRO_VER="1.16.0"
@@ -96,7 +84,6 @@ FREETYPE_VER="2.13.0"
 # 1. Pixman
 cd "$WORK_DIR"
 if [ ! -d "pixman-$PIXMAN_VER" ]; then
-    echo "Downloading Pixman..."
     wget -c https://www.cairographics.org/releases/pixman-$PIXMAN_VER.tar.gz
     tar -xf pixman-$PIXMAN_VER.tar.gz
 fi
@@ -110,12 +97,10 @@ make install
 # 2. Freetype
 cd "$WORK_DIR"
 if [ ! -d "freetype-$FREETYPE_VER" ]; then
-    echo "Downloading Freetype..."
     wget -c https://download.savannah.gnu.org/releases/freetype/freetype-$FREETYPE_VER.tar.gz
     tar -xf freetype-$FREETYPE_VER.tar.gz
 fi
 cd "freetype-$FREETYPE_VER"
-echo "Configuring Freetype..."
 mkdir -p build
 cd build
 ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
@@ -126,7 +111,6 @@ make install
 cd "$WORK_DIR"
 if [ -d "fontconfig-$FONTCONFIG_VER" ]; then rm -rf "fontconfig-$FONTCONFIG_VER"; fi
 if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
-    echo "Downloading Fontconfig..."
     wget -c https://www.freedesktop.org/software/fontconfig/release/fontconfig-$FONTCONFIG_VER.tar.gz
     tar -xf fontconfig-$FONTCONFIG_VER.tar.gz
 fi
@@ -142,7 +126,6 @@ cd "$WORK_DIR"
 rm -rf cairo-1.17.*
 if [ -d "cairo-$CAIRO_VER" ]; then rm -rf "cairo-$CAIRO_VER"; fi
 if [ ! -d "cairo-$CAIRO_VER" ]; then
-    echo "Downloading Cairo..."
     wget -c https://www.cairographics.org/releases/cairo-$CAIRO_VER.tar.xz
     tar -xf cairo-$CAIRO_VER.tar.xz
 fi
@@ -159,13 +142,32 @@ make install
 cd "$WORK_DIR"
 if [ -d "poppler-$POPPLER_VER" ]; then rm -rf "poppler-$POPPLER_VER"; fi
 if [ ! -d "poppler-$POPPLER_VER" ]; then
-    echo "Downloading Poppler..."
     wget -c https://poppler.freedesktop.org/poppler-$POPPLER_VER.tar.xz
     tar -xf poppler-$POPPLER_VER.tar.xz
 fi
 cd "poppler-$POPPLER_VER"
+
+# FORCE PATCH: Disable the check that disables the GLib wrapper
+# The original code is:
+# if(NOT GLIB2_FOUND)
+#   message(STATUS "GLib2 not found, disabling wrapper")
+#   set(ENABLE_GLIB OFF)
+# endif()
+# We replace it to force GLIB2_FOUND to TRUE or simply comment out the disabling logic
+echo "Patching CMakeLists.txt to force GLib wrapper..."
+sed -i 's/if(NOT GLIB2_FOUND)/if(FALSE)/g' CMakeLists.txt
+
 mkdir -p build
 cd build
+
+# Manually define all deps to force GLib wrapper
+SYS_ROOT="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc"
+SYS_INC="$SYS_ROOT/usr/include"
+SYS_LIB="$SYS_ROOT/usr/lib"
+
+# We must ensure compilation flags include glib paths since auto-detection might fail
+export CXXFLAGS="$CXXFLAGS -I$SYS_INC/glib-2.0 -I$SYS_LIB/glib-2.0/include -I$SYS_INC"
+export CFLAGS="$CFLAGS -I$SYS_INC/glib-2.0 -I$SYS_LIB/glib-2.0/include -I$SYS_INC"
 
 cmake .. \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
@@ -184,6 +186,30 @@ cmake .. \
     -DPNG_FOUND=FALSE \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-DPNG_SKIP_SETJMP_CHECK" \
+    -DGLIB2_FOUND=TRUE \
+    -DGLIB2_INCLUDE_DIR="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
+    -DGLIB2_INCLUDE_DIRS="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
+    -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
+    -DGLIB2_LIBRARY="$SYS_LIB/libglib-2.0.so" \
+    -DGOBJECT_FOUND=TRUE \
+    -DGOBJECT_INCLUDE_DIR="$SYS_INC" \
+    -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
+    -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
+    -DGOBJECT_LIBRARY="$SYS_LIB/libgobject-2.0.so" \
+    -DGIO_FOUND=TRUE \
+    -DGIO_INCLUDE_DIR="$SYS_INC" \
+    -DGIO_INCLUDE_DIRS="$SYS_INC" \
+    -DGIO_LIBRARIES="$SYS_LIB/libgio-2.0.so" \
+    -DGIO_LIBRARY="$SYS_LIB/libgio-2.0.so" \
+    -DCAIRO_FOUND=TRUE \
+    -DCAIRO_INCLUDE_DIRS="$INSTALL_DIR/include/cairo" \
+    -DCAIRO_INCLUDE_DIR="$INSTALL_DIR/include/cairo" \
+    -DCAIRO_LIBRARIES="$INSTALL_DIR/lib/libcairo.so" \
+    -DCAIRO_LIBRARY="$INSTALL_DIR/lib/libcairo.so" \
+    -DFREETYPE_INCLUDE_DIRS="$INSTALL_DIR/include/freetype2" \
+    -DFREETYPE_LIBRARIES="$INSTALL_DIR/lib/libfreetype.so" \
+    -DFONTCONFIG_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DFONTCONFIG_LIBRARIES="$INSTALL_DIR/lib/libfontconfig.so" \
     -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
@@ -195,7 +221,6 @@ make install
 # Final verification
 if [ ! -f "$INSTALL_DIR/lib/libpoppler-glib.so" ]; then
     echo "ERROR: libpoppler-glib.so was NOT built! Check CMake output for 'glib wrapper: no'."
-    echo "Debug info: PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
     exit 1
 fi
 
