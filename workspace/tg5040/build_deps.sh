@@ -26,88 +26,50 @@ echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
 # 0. Install gperf (Host tool needed for fontconfig)
-# Previous attempts to compile gperf resulted in ARM binaries due to toolchain aliases.
-# We will download a pre-compiled x86_64 binary from Debian to be safe.
-
-# Check if existing gperf is working (i.e., not a broken ARM binary from previous runs)
 if command -v gperf &> /dev/null; then
     echo "Checking existing gperf..."
     if ! gperf --version &> /dev/null; then
-        echo "Existing gperf is broken or incompatible (likely ARM binary). Removing it..."
+        echo "Existing gperf is broken or incompatible. Removing it..."
         rm -f "$(command -v gperf)"
-        # Also ensure we clear the hash cache in bash if running interactively, though set -e script implies non-interactive mostly
         hash -r 2>/dev/null || true
-    else
-        echo "Existing gperf seems to work."
     fi
 fi
 
 if ! command -v gperf &> /dev/null; then
-    echo "gperf not found (or removed). Installing..."
-
-    # Try apt-get first
+    echo "gperf not found. Installing..."
     if command -v apt-get &> /dev/null; then
         echo "Attempting to install gperf via apt-get..."
         apt-get update && apt-get install -y gperf || echo "apt-get failed."
     fi
 
-    # Check again
     if ! command -v gperf &> /dev/null; then
         echo "Downloading pre-compiled gperf binary (Debian amd64)..."
-
         cd "$WORK_DIR"
-        # Download gperf 3.1 amd64 deb
         GPERF_DEB="gperf_3.1-1_amd64.deb"
-
-        # Always re-download to be safe
         rm -f "$GPERF_DEB"
         wget -c http://ftp.debian.org/debian/pool/main/g/gperf/$GPERF_DEB
-
-        # Extract it
         ar x "$GPERF_DEB"
-
-        # Extract data.tar.xz (contains usr/bin/gperf)
-        if [ -f "data.tar.xz" ]; then
-            tar -xf data.tar.xz
-        elif [ -f "data.tar.gz" ]; then
-            tar -xf data.tar.gz
-        else
-            echo "Error: Could not find data.tar.* in deb package"
-            exit 1
-        fi
-
-        # Move binary to our local bin
+        if [ -f "data.tar.xz" ]; then tar -xf data.tar.xz; elif [ -f "data.tar.gz" ]; then tar -xf data.tar.gz; else echo "Error: Could not find data.tar.*"; exit 1; fi
         cp usr/bin/gperf "$INSTALL_DIR/bin/"
         chmod +x "$INSTALL_DIR/bin/gperf"
-
-        echo "Installed pre-compiled gperf to $INSTALL_DIR/bin/gperf"
-
-        # Verify immediately
         "$INSTALL_DIR/bin/gperf" --version || (echo "Error: Installed gperf binary is invalid!" && exit 1)
-
-        # Cleanup extraction
         rm -rf usr
-
         cd "$WORK_DIR"
     fi
-else
-    echo "gperf found: $(command -v gperf)"
 fi
 
 # Ensure environment is set up for cross-compilation
 if [ -z "$CROSS_TRIPLE" ]; then
     echo "CROSS_TRIPLE not set. Attempting to detect..."
-    # Try to find the cross compiler in the path or common locations
     if which aarch64-nextui-linux-gnu-gcc >/dev/null 2>&1; then
         export CROSS_TRIPLE="aarch64-nextui-linux-gnu"
     elif [ -d "/opt/aarch64-nextui-linux-gnu/bin" ]; then
         export PATH="/opt/aarch64-nextui-linux-gnu/bin:$PATH"
         export CROSS_TRIPLE="aarch64-nextui-linux-gnu"
     else
-        echo "Error: Could not determine CROSS_TRIPLE. Please ensure you are running in the toolchain."
+        echo "Error: Could not determine CROSS_TRIPLE."
         exit 1
     fi
-    echo "Detected CROSS_TRIPLE: $CROSS_TRIPLE"
 fi
 
 if [ -z "$CC" ]; then
@@ -148,77 +110,49 @@ if [ ! -d "freetype-$FREETYPE_VER" ]; then
     tar -xf freetype-$FREETYPE_VER.tar.gz
 fi
 cd "freetype-$FREETYPE_VER"
-
-# Use out-of-tree build to avoid top-level Makefile auto-detection issues
 echo "Configuring Freetype..."
 mkdir -p build
 cd build
-# Call the top-level configure from the build dir; it should correctly pass args down
 ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
-
 make -j$JOBS
 make install
 
 # 3. Fontconfig
 cd "$WORK_DIR"
-# Remove existing dir to force reconfiguration with new environment variables
-if [ -d "fontconfig-$FONTCONFIG_VER" ]; then
-    rm -rf "fontconfig-$FONTCONFIG_VER"
-fi
-
+if [ -d "fontconfig-$FONTCONFIG_VER" ]; then rm -rf "fontconfig-$FONTCONFIG_VER"; fi
 if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
     echo "Downloading Fontconfig..."
     wget -c https://www.freedesktop.org/software/fontconfig/release/fontconfig-$FONTCONFIG_VER.tar.gz
     tar -xf fontconfig-$FONTCONFIG_VER.tar.gz
 fi
 cd "fontconfig-$FONTCONFIG_VER"
-if [ ! -f Makefile ]; then
-    # Explicitly tell fontconfig where to find freetype headers/libs
-    # This prevents 'fatal error: ft2build.h: No such file or directory'
-    export FREETYPE_CFLAGS="-I$INSTALL_DIR/include/freetype2"
-    export FREETYPE_LIBS="-L$INSTALL_DIR/lib -lfreetype"
-
-    ./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --disable-docs --disable-nls --with-default-fonts=/usr/share/fonts
-fi
+export FREETYPE_CFLAGS="-I$INSTALL_DIR/include/freetype2"
+export FREETYPE_LIBS="-L$INSTALL_DIR/lib -lfreetype"
+./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --disable-docs --disable-nls --with-default-fonts=/usr/share/fonts
 make -j$JOBS
 make install
 
 # 4. Cairo
 cd "$WORK_DIR"
-# Remove modern cairo versions if they exist to avoid confusion
 rm -rf cairo-1.17.*
-
-# Clean cairo too to ensure it picks up the new fontconfig
-if [ -d "cairo-$CAIRO_VER" ]; then
-    rm -rf "cairo-$CAIRO_VER"
-fi
-
+if [ -d "cairo-$CAIRO_VER" ]; then rm -rf "cairo-$CAIRO_VER"; fi
 if [ ! -d "cairo-$CAIRO_VER" ]; then
     echo "Downloading Cairo..."
-    # Use reliable stable release
     wget -c https://www.cairographics.org/releases/cairo-$CAIRO_VER.tar.xz
     tar -xf cairo-$CAIRO_VER.tar.xz
 fi
 cd "cairo-$CAIRO_VER"
-if [ ! -f Makefile ]; then
-    # Fix for finding pixman
-    export pixman_CFLAGS="-I$INSTALL_DIR/include/pixman-1"
-    export pixman_LIBS="-L$INSTALL_DIR/lib -lpixman-1"
-
-    ./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared \
-        --disable-xlib --disable-xcb --disable-win32 \
-        --enable-pdf --enable-png --enable-ft --enable-fc
-fi
+export pixman_CFLAGS="-I$INSTALL_DIR/include/pixman-1"
+export pixman_LIBS="-L$INSTALL_DIR/lib -lpixman-1"
+./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared \
+    --disable-xlib --disable-xcb --disable-win32 \
+    --enable-pdf --enable-png --enable-ft --enable-fc
 make -j$JOBS
 make install
 
 # 5. Poppler
 cd "$WORK_DIR"
-# Clean poppler too
-if [ -d "poppler-$POPPLER_VER" ]; then
-    rm -rf "poppler-$POPPLER_VER"
-fi
-
+if [ -d "poppler-$POPPLER_VER" ]; then rm -rf "poppler-$POPPLER_VER"; fi
 if [ ! -d "poppler-$POPPLER_VER" ]; then
     echo "Downloading Poppler..."
     wget -c https://poppler.freedesktop.org/poppler-$POPPLER_VER.tar.xz
@@ -228,13 +162,7 @@ cd "poppler-$POPPLER_VER"
 mkdir -p build
 cd build
 
-# Preemptively fix discovery for Poppler too
-export CAIRO_CFLAGS="-I$INSTALL_DIR/include/cairo"
-export CAIRO_LIBS="-L$INSTALL_DIR/lib -lcairo"
-export FONTCONFIG_CFLAGS="-I$INSTALL_DIR/include/fontconfig"
-export FONTCONFIG_LIBS="-L$INSTALL_DIR/lib -lfontconfig"
-
-# System GLib paths
+# Manually define all deps to force GLib wrapper
 SYS_ROOT="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc"
 SYS_INC="$SYS_ROOT/usr/include"
 SYS_LIB="$SYS_ROOT/usr/lib"
@@ -260,6 +188,14 @@ cmake .. \
     -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
     -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
     -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
+    -DGIO_INCLUDE_DIRS="$SYS_INC" \
+    -DGIO_LIBRARIES="$SYS_LIB/libgio-2.0.so" \
+    -DCAIRO_INCLUDE_DIRS="$INSTALL_DIR/include/cairo" \
+    -DCAIRO_LIBRARIES="$INSTALL_DIR/lib/libcairo.so" \
+    -DFREETYPE_INCLUDE_DIRS="$INSTALL_DIR/include/freetype2" \
+    -DFREETYPE_LIBRARIES="$INSTALL_DIR/lib/libfreetype.so" \
+    -DFONTCONFIG_INCLUDE_DIR="$INSTALL_DIR/include" \
+    -DFONTCONFIG_LIBRARIES="$INSTALL_DIR/lib/libfontconfig.so" \
     -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
@@ -267,5 +203,11 @@ cmake .. \
 
 make -j$JOBS
 make install
+
+# Final verification
+if [ ! -f "$INSTALL_DIR/lib/libpoppler-glib.so" ]; then
+    echo "ERROR: libpoppler-glib.so was NOT built! Check CMake output for 'glib wrapper: no'."
+    exit 1
+fi
 
 echo "Done! Libraries installed to $INSTALL_DIR"
