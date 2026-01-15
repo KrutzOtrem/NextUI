@@ -13,6 +13,8 @@ mkdir -p "$INSTALL_DIR/bin"
 export PATH="$INSTALL_DIR/bin:$PATH"
 
 # PKG_CONFIG_PATH SETUP
+# We need our local libs AND the system libs (for glib-2.0)
+# Found system pkgconfig at: /opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig
 SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
 export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
@@ -152,7 +154,7 @@ echo "Downloading pre-compiled Poppler ARM64 packages..."
 cd "$WORK_DIR"
 
 # URLs for libpoppler-glib8 and libpoppler82 (compatible versions from Buster)
-# Using http for better compatibility inside docker
+# Update: Using archive.debian.org because these older versions might be removed from main pool
 POPPLER_GLIB_DEB="libpoppler-glib8_0.71.0-5_arm64.deb"
 POPPLER_CORE_DEB="libpoppler82_0.71.0-5_arm64.deb"
 POPPLER_DEV_DEB="libpoppler-glib-dev_0.71.0-5_arm64.deb"
@@ -161,10 +163,10 @@ POPPLER_DEV_DEB="libpoppler-glib-dev_0.71.0-5_arm64.deb"
 rm -f *.deb
 rm -rf extract_poppler
 
-# Download
-wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_GLIB_DEB
-wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_CORE_DEB
-wget -c http://ftp.debian.org/debian/pool/main/p/poppler/$POPPLER_DEV_DEB
+# Download from Archive
+wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_GLIB_DEB
+wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_CORE_DEB
+wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_DEV_DEB
 
 mkdir -p extract_poppler
 cd extract_poppler
