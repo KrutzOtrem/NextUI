@@ -72,12 +72,11 @@ if [ ! -d "freetype-$FREETYPE_VER" ]; then
 fi
 cd "freetype-$FREETYPE_VER"
 
-# Fix: Force re-configuration if the previous one failed or Makefile is missing
-if [ ! -f Makefile ] || [ ! -f config.mk ]; then
-    echo "Configuring Freetype..."
-    # Use the unix-specific configure to avoid auto-detection issues dropping --host
-    ./builds/unix/configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
-fi
+# Always force configuration to avoid auto-detection issues
+echo "Configuring Freetype..."
+# Use the unix-specific configure to avoid auto-detection issues dropping --host
+./builds/unix/configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
+
 make -j$JOBS
 make install
 
