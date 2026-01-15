@@ -16,7 +16,10 @@ export PATH="$INSTALL_DIR/bin:$PATH"
 # We need our local libs AND the system libs (for glib-2.0)
 # Found system pkgconfig at: /opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig
 SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
-export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH"
+# Also set LIBDIR to be safe for cross-compilation
+export PKG_CONFIG_LIBDIR="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH"
+
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
 
 # Parallel build
@@ -164,11 +167,6 @@ cd "poppler-$POPPLER_VER"
 mkdir -p build
 cd build
 
-# Manually define all deps to force GLib wrapper
-SYS_ROOT="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc"
-SYS_INC="$SYS_ROOT/usr/include"
-SYS_LIB="$SYS_ROOT/usr/lib"
-
 cmake .. \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DCMAKE_SYSTEM_NAME=Linux \
@@ -186,30 +184,6 @@ cmake .. \
     -DPNG_FOUND=FALSE \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-DPNG_SKIP_SETJMP_CHECK" \
-    -DGLIB2_FOUND=TRUE \
-    -DGLIB2_INCLUDE_DIR="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
-    -DGLIB2_INCLUDE_DIRS="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
-    -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
-    -DGLIB2_LIBRARY="$SYS_LIB/libglib-2.0.so" \
-    -DGOBJECT_FOUND=TRUE \
-    -DGOBJECT_INCLUDE_DIR="$SYS_INC" \
-    -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
-    -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
-    -DGOBJECT_LIBRARY="$SYS_LIB/libgobject-2.0.so" \
-    -DGIO_FOUND=TRUE \
-    -DGIO_INCLUDE_DIR="$SYS_INC" \
-    -DGIO_INCLUDE_DIRS="$SYS_INC" \
-    -DGIO_LIBRARIES="$SYS_LIB/libgio-2.0.so" \
-    -DGIO_LIBRARY="$SYS_LIB/libgio-2.0.so" \
-    -DCAIRO_FOUND=TRUE \
-    -DCAIRO_INCLUDE_DIRS="$INSTALL_DIR/include/cairo" \
-    -DCAIRO_INCLUDE_DIR="$INSTALL_DIR/include/cairo" \
-    -DCAIRO_LIBRARIES="$INSTALL_DIR/lib/libcairo.so" \
-    -DCAIRO_LIBRARY="$INSTALL_DIR/lib/libcairo.so" \
-    -DFREETYPE_INCLUDE_DIRS="$INSTALL_DIR/include/freetype2" \
-    -DFREETYPE_LIBRARIES="$INSTALL_DIR/lib/libfreetype.so" \
-    -DFONTCONFIG_INCLUDE_DIR="$INSTALL_DIR/include" \
-    -DFONTCONFIG_LIBRARIES="$INSTALL_DIR/lib/libfontconfig.so" \
     -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
@@ -221,6 +195,7 @@ make install
 # Final verification
 if [ ! -f "$INSTALL_DIR/lib/libpoppler-glib.so" ]; then
     echo "ERROR: libpoppler-glib.so was NOT built! Check CMake output for 'glib wrapper: no'."
+    echo "Debug info: PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
     exit 1
 fi
 
