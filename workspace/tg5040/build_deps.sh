@@ -11,7 +11,12 @@ mkdir -p "$INSTALL_DIR/bin"
 
 # Add install dir to path immediately so we can use tools we build (like gperf)
 export PATH="$INSTALL_DIR/bin:$PATH"
-export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+# PKG_CONFIG_PATH SETUP
+# We need our local libs AND the system libs (for glib-2.0)
+# Found system pkgconfig at: /opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig
+SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
+export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
 
 # Parallel build
