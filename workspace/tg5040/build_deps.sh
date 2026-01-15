@@ -8,6 +8,39 @@ INSTALL_DIR="$SCRIPT_DIR/libs"
 mkdir -p "$WORK_DIR"
 mkdir -p "$INSTALL_DIR"
 
+# Add install dir to path immediately so we can use tools we build (like gperf)
+export PATH="$INSTALL_DIR/bin:$PATH"
+export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
+
+# Parallel build
+JOBS=$(nproc)
+
+echo "Building dependencies in $WORK_DIR"
+echo "Installing to $INSTALL_DIR"
+
+# 0. Build gperf (Host tool needed for fontconfig)
+GPERF_VER="3.1"
+cd "$WORK_DIR"
+if ! command -v gperf &> /dev/null; then
+    echo "gperf not found. Building gperf..."
+    if [ ! -d "gperf-$GPERF_VER" ]; then
+        echo "Downloading gperf..."
+        wget -c http://ftp.gnu.org/pub/gnu/gperf/gperf-$GPERF_VER.tar.gz
+        tar -xf gperf-$GPERF_VER.tar.gz
+    fi
+    cd "gperf-$GPERF_VER"
+    if [ ! -f Makefile ]; then
+        # Use system gcc for host tool
+        CC=gcc CXX=g++ ./configure --prefix="$INSTALL_DIR"
+    fi
+    make -j$JOBS
+    make install
+    cd "$WORK_DIR"
+else
+    echo "gperf found: $(command -v gperf)"
+fi
+
 # Ensure environment is set up for cross-compilation
 if [ -z "$CROSS_TRIPLE" ]; then
     echo "CROSS_TRIPLE not set. Attempting to detect..."
@@ -31,9 +64,7 @@ if [ -z "$CC" ]; then
     export LD="${CROSS_TRIPLE}-ld"
 fi
 
-export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
-export PATH="$INSTALL_DIR/bin:$PATH"
+echo "Host Triple: $CROSS_TRIPLE"
 
 # Versions
 PIXMAN_VER="0.42.2"
@@ -41,13 +72,6 @@ CAIRO_VER="1.17.8"
 POPPLER_VER="22.02.0"
 FONTCONFIG_VER="2.14.2"
 FREETYPE_VER="2.13.0"
-
-# Parallel build
-JOBS=$(nproc)
-
-echo "Building dependencies in $WORK_DIR"
-echo "Installing to $INSTALL_DIR"
-echo "Host Triple: $CROSS_TRIPLE"
 
 # 1. Pixman
 cd "$WORK_DIR"
