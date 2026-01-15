@@ -20,7 +20,8 @@ echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
 # 0. Build gperf (Host tool needed for fontconfig)
-GPERF_VER="3.1"
+# Downgraded to 3.0.4 because 3.1+ requires C++ which is missing on host
+GPERF_VER="3.0.4"
 cd "$WORK_DIR"
 if ! command -v gperf &> /dev/null; then
     echo "gperf not found. Building gperf..."
@@ -43,9 +44,8 @@ if ! command -v gperf &> /dev/null; then
         (
             unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS
             export CC=gcc
-            export CXX=g++
+            # 3.0.4 is C only, so we don't need CXX/CXXCPP
             export CPP="gcc -E"
-            export CXXCPP="g++ -E"
             ./configure --prefix="$INSTALL_DIR"
         )
     fi
