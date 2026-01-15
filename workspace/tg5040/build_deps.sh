@@ -234,6 +234,11 @@ export CAIRO_LIBS="-L$INSTALL_DIR/lib -lcairo"
 export FONTCONFIG_CFLAGS="-I$INSTALL_DIR/include/fontconfig"
 export FONTCONFIG_LIBS="-L$INSTALL_DIR/lib -lfontconfig"
 
+# System GLib paths
+SYS_ROOT="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc"
+SYS_INC="$SYS_ROOT/usr/include"
+SYS_LIB="$SYS_ROOT/usr/lib"
+
 cmake .. \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
     -DCMAKE_SYSTEM_NAME=Linux \
@@ -245,15 +250,16 @@ cmake .. \
     -DENABLE_LIBOPENJPEG=none \
     -DENABLE_CPP=OFF \
     -DENABLE_GLIB=ON \
-    -DBUILD_GTK_TESTS=OFF \
-    -DBUILD_QT5_TESTS=OFF \
-    -DBUILD_CPP_TESTS=OFF \
     -DENABLE_BOOST=OFF \
     -DENABLE_LIBPNG=OFF \
     -DCMAKE_DISABLE_FIND_PACKAGE_PNG=TRUE \
     -DPNG_FOUND=FALSE \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-DPNG_SKIP_SETJMP_CHECK" \
+    -DGLIB2_INCLUDE_DIRS="$SYS_INC/glib-2.0;$SYS_LIB/glib-2.0/include" \
+    -DGLIB2_LIBRARIES="$SYS_LIB/libglib-2.0.so" \
+    -DGOBJECT_INCLUDE_DIRS="$SYS_INC" \
+    -DGOBJECT_LIBRARIES="$SYS_LIB/libgobject-2.0.so" \
     -DCMAKE_FIND_ROOT_PATH="$INSTALL_DIR" \
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
