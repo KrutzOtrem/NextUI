@@ -196,6 +196,10 @@ if [ ! -d "cairo-$CAIRO_VER" ]; then
 fi
 cd "cairo-$CAIRO_VER"
 if [ ! -f Makefile ]; then
+    # Fix for finding pixman
+    export pixman_CFLAGS="-I$INSTALL_DIR/include/pixman-1"
+    export pixman_LIBS="-L$INSTALL_DIR/lib -lpixman-1"
+
     ./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared \
         --disable-xlib --disable-xcb --disable-win32 \
         --enable-pdf --enable-png --enable-ft --enable-fc
@@ -218,6 +222,12 @@ fi
 cd "poppler-$POPPLER_VER"
 mkdir -p build
 cd build
+
+# Preemptively fix discovery for Poppler too
+export CAIRO_CFLAGS="-I$INSTALL_DIR/include/cairo"
+export CAIRO_LIBS="-L$INSTALL_DIR/lib -lcairo"
+export FONTCONFIG_CFLAGS="-I$INSTALL_DIR/include/fontconfig"
+export FONTCONFIG_LIBS="-L$INSTALL_DIR/lib -lfontconfig"
 
 cmake .. \
     -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
