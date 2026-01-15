@@ -24,6 +24,12 @@ GPERF_VER="3.1"
 cd "$WORK_DIR"
 if ! command -v gperf &> /dev/null; then
     echo "gperf not found. Building gperf..."
+
+    # Force clean build to avoid stuck states from previous failed attempts
+    if [ -d "gperf-$GPERF_VER" ]; then
+        rm -rf "gperf-$GPERF_VER"
+    fi
+
     if [ ! -d "gperf-$GPERF_VER" ]; then
         echo "Downloading gperf..."
         wget -c http://ftp.gnu.org/pub/gnu/gperf/gperf-$GPERF_VER.tar.gz
