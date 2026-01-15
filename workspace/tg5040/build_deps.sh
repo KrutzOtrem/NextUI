@@ -37,20 +37,24 @@ if ! command -v gperf &> /dev/null; then
         tar -xf gperf-$GPERF_VER.tar.gz
     fi
     cd "gperf-$GPERF_VER"
-    if [ ! -f Makefile ]; then
-        # Use system gcc for host tool and sanitize env to avoid cross-compiler pollution
-        # We run this in a subshell or just setting vars for this command to avoid messing up global state
-        echo "Configuring gperf for host..."
-        (
-            unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS
-            export CC=gcc
-            # 3.0.4 is C only, so we don't need CXX/CXXCPP
-            export CPP="gcc -E"
-            ./configure --prefix="$INSTALL_DIR"
-        )
-    fi
-    make -j$JOBS
-    make install
+
+    # Use system gcc for host tool and sanitize env to avoid cross-compiler pollution
+    # We run the entire build process in a subshell so variables don't leak out
+    # and outside variables don't leak in (via export overrides)
+    echo "Configuring and building gperf for host..."
+    (
+        unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS CC CXX AR LD
+        export CC=gcc
+        export CPP="gcc -E"
+
+        if [ ! -f Makefile ]; then
+             ./configure --prefix="$INSTALL_DIR"
+        fi
+
+        make -j$JOBS
+        make install
+    )
+
     cd "$WORK_DIR"
 else
     echo "gperf found: $(command -v gperf)"
