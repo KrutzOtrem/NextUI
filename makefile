@@ -115,6 +115,7 @@ ifeq ($(PLATFORM), tg5040)
 	cp ./workspace/all/minarch/build/$(PLATFORM)/liblzma.* ./build/SYSTEM/$(PLATFORM)/lib/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/libzstd.* ./build/SYSTEM/$(PLATFORM)/lib/
 	# PDF manual libs
+	-cp ./workspace/tg5040/libs/lib/libpoppler.so* ./build/SYSTEM/$(PLATFORM)/lib/
 	-cp ./workspace/tg5040/libs/lib/libpoppler-glib.so* ./build/SYSTEM/$(PLATFORM)/lib/
 	-cp ./workspace/tg5040/libs/lib/libcairo.so* ./build/SYSTEM/$(PLATFORM)/lib/
 	-cp ./workspace/tg5040/libs/lib/libpixman-1.so* ./build/SYSTEM/$(PLATFORM)/lib/

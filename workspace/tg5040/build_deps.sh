@@ -72,10 +72,12 @@ if [ ! -d "freetype-$FREETYPE_VER" ]; then
 fi
 cd "freetype-$FREETYPE_VER"
 
-# Always force configuration to avoid auto-detection issues
+# Use out-of-tree build to avoid top-level Makefile auto-detection issues
 echo "Configuring Freetype..."
-# Use the unix-specific configure to avoid auto-detection issues dropping --host
-./builds/unix/configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
+mkdir -p build
+cd build
+# Call the top-level configure from the build dir; it should correctly pass args down
+../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
 
 make -j$JOBS
 make install
