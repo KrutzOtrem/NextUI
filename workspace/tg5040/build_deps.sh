@@ -21,11 +21,22 @@ echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
 # 0. Install gperf (Host tool needed for fontconfig)
-# Previous attempts to compile gperf resulted in ARM binaries due to toolchain aliases.
-# We will download a pre-compiled x86_64 binary from Debian to be safe.
+
+# Check if existing gperf is working (i.e., not a broken ARM binary from previous runs)
+if command -v gperf &> /dev/null; then
+    echo "Checking existing gperf..."
+    if ! gperf --version &> /dev/null; then
+        echo "Existing gperf is broken or incompatible (likely ARM binary). Removing it..."
+        rm -f "$(command -v gperf)"
+        # Also ensure we clear the hash cache in bash if running interactively, though set -e script implies non-interactive mostly
+        hash -r 2>/dev/null || true
+    else
+        echo "Existing gperf seems to work."
+    fi
+fi
 
 if ! command -v gperf &> /dev/null; then
-    echo "gperf not found."
+    echo "gperf not found (or removed). Installing..."
 
     # Try apt-get first
     if command -v apt-get &> /dev/null; then
@@ -40,17 +51,15 @@ if ! command -v gperf &> /dev/null; then
         cd "$WORK_DIR"
         # Download gperf 3.1 amd64 deb
         GPERF_DEB="gperf_3.1-1_amd64.deb"
-        if [ ! -f "$GPERF_DEB" ]; then
-            wget -c http://ftp.debian.org/debian/pool/main/g/gperf/$GPERF_DEB
-        fi
+
+        # Always re-download to be safe
+        rm -f "$GPERF_DEB"
+        wget -c http://ftp.debian.org/debian/pool/main/g/gperf/$GPERF_DEB
 
         # Extract it
-        # .deb is an ar archive containing debian-binary, control.tar.xz, data.tar.xz
-        # We can use the cross-compile ar if needed, ar format is portable
         ar x "$GPERF_DEB"
 
         # Extract data.tar.xz (contains usr/bin/gperf)
-        # We need to handle potentially different compression or tar naming depending on distro
         if [ -f "data.tar.xz" ]; then
             tar -xf data.tar.xz
         elif [ -f "data.tar.gz" ]; then
@@ -65,6 +74,9 @@ if ! command -v gperf &> /dev/null; then
         chmod +x "$INSTALL_DIR/bin/gperf"
 
         echo "Installed pre-compiled gperf to $INSTALL_DIR/bin/gperf"
+
+        # Verify immediately
+        "$INSTALL_DIR/bin/gperf" --version || (echo "Error: Installed gperf binary is invalid!" && exit 1)
 
         # Cleanup extraction
         rm -rf usr
