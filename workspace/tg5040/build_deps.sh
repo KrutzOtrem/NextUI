@@ -21,6 +21,8 @@ echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
 # 0. Install gperf (Host tool needed for fontconfig)
+# Previous attempts to compile gperf resulted in ARM binaries due to toolchain aliases.
+# We will download a pre-compiled x86_64 binary from Debian to be safe.
 
 # Check if existing gperf is working (i.e., not a broken ARM binary from previous runs)
 if command -v gperf &> /dev/null; then
@@ -161,6 +163,11 @@ if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
 fi
 cd "fontconfig-$FONTCONFIG_VER"
 if [ ! -f Makefile ]; then
+    # Explicitly tell fontconfig where to find freetype headers/libs
+    # This prevents 'fatal error: ft2build.h: No such file or directory'
+    export FREETYPE_CFLAGS="-I$INSTALL_DIR/include/freetype2"
+    export FREETYPE_LIBS="-L$INSTALL_DIR/lib -lfreetype"
+
     ./configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --disable-docs --disable-nls --with-default-fonts=/usr/share/fonts
 fi
 make -j$JOBS
