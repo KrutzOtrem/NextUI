@@ -40,11 +40,18 @@ LDFLAGS	 +=  -Llibretro-common -lsrm -lzip
 CFLAGS   += -DHAS_SRM
 endif
 ifeq ($(PLATFORM), tg5040)
-# Force enable PDF support since we know libs are built
-# Use absolute path for pkg-config to find our local libs, while preserving system paths for glib
-LOCAL_PKG_PATH = /root/workspace/tg5040/libs/lib/pkgconfig
-CFLAGS += $(shell export PKG_CONFIG_PATH=$(LOCAL_PKG_PATH):$(PKG_CONFIG_PATH) && pkg-config --cflags poppler-glib cairo glib-2.0) -DENABLE_PDF_MANUAL
-LDFLAGS += $(shell export PKG_CONFIG_PATH=$(LOCAL_PKG_PATH):$(PKG_CONFIG_PATH) && pkg-config --libs poppler-glib cairo glib-2.0)
+# Force enable PDF support using manual paths to avoid pkg-config environment issues
+LOCAL_LIBS_DIR = /root/workspace/tg5040/libs
+# Manually add includes for all our built deps
+CFLAGS += -I$(LOCAL_LIBS_DIR)/include/poppler/glib -I$(LOCAL_LIBS_DIR)/include/cairo -I$(LOCAL_LIBS_DIR)/include/pixman-1 -I$(LOCAL_LIBS_DIR)/include/freetype2 -I$(LOCAL_LIBS_DIR)/include/fontconfig
+# Add includes for system glib (using system pkg-config)
+CFLAGS += $(shell pkg-config --cflags glib-2.0 gio-2.0 gobject-2.0) -DENABLE_PDF_MANUAL
+
+# Manually add library paths and link flags
+LDFLAGS += -L$(LOCAL_LIBS_DIR)/lib -lpoppler-glib -lpoppler -lcairo -lpixman-1 -lfreetype -lfontconfig
+# Add system glib libs
+LDFLAGS += $(shell pkg-config --libs glib-2.0 gio-2.0 gobject-2.0)
+
 CFLAGS += -DHAS_WIFIMG -DHAS_BTMG
 LDFLAGS +=  -lwifimg -lwifid
 LDFLAGS +=  -lbtmg -lglib-2.0 -lgio-2.0 -lshared-mainloop -lbluetooth-internal -lasound -ljson-c
