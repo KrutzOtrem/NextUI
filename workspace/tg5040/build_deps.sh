@@ -116,7 +116,7 @@ echo "Host Triple: $CROSS_TRIPLE"
 
 # Versions
 PIXMAN_VER="0.42.2"
-CAIRO_VER="1.17.8"
+CAIRO_VER="1.16.0"
 POPPLER_VER="22.02.0"
 FONTCONFIG_VER="2.14.2"
 FREETYPE_VER="2.13.0"
@@ -180,6 +180,9 @@ make install
 
 # 4. Cairo
 cd "$WORK_DIR"
+# Remove modern cairo versions if they exist to avoid confusion
+rm -rf cairo-1.17.*
+
 # Clean cairo too to ensure it picks up the new fontconfig
 if [ -d "cairo-$CAIRO_VER" ]; then
     rm -rf "cairo-$CAIRO_VER"
@@ -187,7 +190,8 @@ fi
 
 if [ ! -d "cairo-$CAIRO_VER" ]; then
     echo "Downloading Cairo..."
-    wget -c https://www.cairographics.org/snapshots/cairo-$CAIRO_VER.tar.xz
+    # Use reliable stable release
+    wget -c https://www.cairographics.org/releases/cairo-$CAIRO_VER.tar.xz
     tar -xf cairo-$CAIRO_VER.tar.xz
 fi
 cd "cairo-$CAIRO_VER"
