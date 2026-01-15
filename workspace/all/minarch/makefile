@@ -40,10 +40,11 @@ LDFLAGS	 +=  -Llibretro-common -lsrm -lzip
 CFLAGS   += -DHAS_SRM
 endif
 ifeq ($(PLATFORM), tg5040)
-TG5040_LIBS = ../../tg5040/libs
 # Force enable PDF support since we know libs are built
-CFLAGS += $(shell PKG_CONFIG_PATH=$(abspath $(TG5040_LIBS)/lib/pkgconfig) pkg-config --cflags poppler-glib cairo glib-2.0) -DENABLE_PDF_MANUAL
-LDFLAGS += $(shell PKG_CONFIG_PATH=$(abspath $(TG5040_LIBS)/lib/pkgconfig) pkg-config --libs poppler-glib cairo glib-2.0)
+# Use absolute path for pkg-config to find our local libs, while preserving system paths for glib
+LOCAL_PKG_PATH = /root/workspace/tg5040/libs/lib/pkgconfig
+CFLAGS += $(shell export PKG_CONFIG_PATH=$(LOCAL_PKG_PATH):$(PKG_CONFIG_PATH) && pkg-config --cflags poppler-glib cairo glib-2.0) -DENABLE_PDF_MANUAL
+LDFLAGS += $(shell export PKG_CONFIG_PATH=$(LOCAL_PKG_PATH):$(PKG_CONFIG_PATH) && pkg-config --libs poppler-glib cairo glib-2.0)
 CFLAGS += -DHAS_WIFIMG -DHAS_BTMG
 LDFLAGS +=  -lwifimg -lwifid
 LDFLAGS +=  -lbtmg -lglib-2.0 -lgio-2.0 -lshared-mainloop -lbluetooth-internal -lasound -ljson-c
