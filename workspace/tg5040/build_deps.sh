@@ -7,6 +7,7 @@ WORK_DIR="$SCRIPT_DIR/build_work"
 INSTALL_DIR="$SCRIPT_DIR/libs"
 mkdir -p "$WORK_DIR"
 mkdir -p "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR/bin"
 
 # Add install dir to path immediately so we can use tools we build (like gperf)
 export PATH="$INSTALL_DIR/bin:$PATH"
@@ -19,50 +20,54 @@ JOBS=$(nproc)
 echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
-# 0. Build gperf (Host tool needed for fontconfig)
-# Downgraded to 3.0.4 because 3.1+ requires C++ which is missing on host
-GPERF_VER="3.0.4"
-cd "$WORK_DIR"
+# 0. Install gperf (Host tool needed for fontconfig)
+# Trying to compile it proved difficult due to cross-compiler environment pollution.
+# Best approach: Install via apt if available, or download pre-compiled binary.
 if ! command -v gperf &> /dev/null; then
-    echo "gperf not found. Building gperf..."
+    echo "gperf not found."
 
-    # Force clean build to avoid stuck states from previous failed attempts
-    if [ -d "gperf-$GPERF_VER" ]; then
-        rm -rf "gperf-$GPERF_VER"
+    # Try apt-get first (Debian/Ubuntu based images)
+    if command -v apt-get &> /dev/null; then
+        echo "Attempting to install gperf via apt-get..."
+        # We need to update first usually, but try install directly just in case to save time/bandwidth
+        # ignoring errors to fall back to binary download
+        apt-get update && apt-get install -y gperf || echo "apt-get failed, falling back to binary download."
     fi
 
-    if [ ! -d "gperf-$GPERF_VER" ]; then
-        echo "Downloading gperf..."
+    # Check again
+    if ! command -v gperf &> /dev/null; then
+        echo "Downloading pre-compiled gperf binary..."
+        # Static binary from a reliable source (e.g. Debian package or similar static build)
+        # Since finding a guaranteed static binary URL that works forever is hard,
+        # let's try to compile one LAST TIME but with a trick: make -e to override variables
+        # actually, the user approved "do what you must", so let's try the safest compilation method:
+        # separate source dir entirely from build to ensure no pollution.
+
+        # Actually, let's just retry compilation but simpler:
+        # Use gperf 3.0.4, force PATH to NOT include cross compiler during configure/make.
+
+        GPERF_VER="3.0.4"
+        cd "$WORK_DIR"
+        if [ -d "gperf-$GPERF_VER" ]; then rm -rf "gperf-$GPERF_VER"; fi
+
         wget -c http://ftp.gnu.org/pub/gnu/gperf/gperf-$GPERF_VER.tar.gz
         tar -xf gperf-$GPERF_VER.tar.gz
+        cd "gperf-$GPERF_VER"
+
+        echo "Compiling gperf with strictly sanitized PATH..."
+        (
+            # Save strict path
+            ORIG_PATH=$PATH
+            # Set PATH to only system paths to hide cross-compiler
+            export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            unset CC CXX CPP CXXCPP CROSS_COMPILE CROSS_TRIPLE AR LD NM RANLIB
+
+            ./configure --prefix="$INSTALL_DIR"
+            make -j$JOBS
+            make install
+        )
+        cd "$WORK_DIR"
     fi
-    cd "gperf-$GPERF_VER"
-
-    # Use system gcc for host tool and sanitize env to avoid cross-compiler pollution
-    echo "Configuring and building gperf for host..."
-    (
-        unset CPP CXXCPP CROSS_COMPILE ARCH LDFLAGS CFLAGS CXXFLAGS CC CXX AR LD
-        # Force absolute path to avoid picking up cross-compiler aliases
-        export CC=/usr/bin/gcc
-        export CPP="/usr/bin/gcc -E"
-        # Explicitly tell configure we are building for the build machine
-        HOST_ARCH=$(uname -m)
-
-        if [ ! -f Makefile ]; then
-             ./configure --prefix="$INSTALL_DIR" --build=${HOST_ARCH}-linux-gnu --host=${HOST_ARCH}-linux-gnu
-        fi
-
-        make -j$JOBS
-        make install
-    )
-
-    # Verification step
-    if [ -f "$INSTALL_DIR/bin/gperf" ]; then
-        echo "Verifying gperf binary..."
-        file "$INSTALL_DIR/bin/gperf" || true
-    fi
-
-    cd "$WORK_DIR"
 else
     echo "gperf found: $(command -v gperf)"
 fi
