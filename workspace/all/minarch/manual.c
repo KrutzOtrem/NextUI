@@ -54,9 +54,9 @@ static void Manual_render(void) {
     float width = bounds.x1 - bounds.x0;
     float height = bounds.y1 - bounds.y0;
 
-    // Initial Auto-fit width if scale is 0
+    // Initial Auto-fit HEIGHT if scale is 0
     if (manual.scale == 0) {
-        manual.scale = (float)screen->w / width;
+        manual.scale = (float)screen->h / height;
     }
 
     // Set up transform
@@ -82,26 +82,38 @@ static void Manual_render(void) {
     // Calculate blit positions
     SDL_Rect src_rect, dst_rect;
 
-    // Center horizontally if smaller than screen
-    dst_rect.x = (screen->w - scaled_w) / 2;
-    if (dst_rect.x < 0) dst_rect.x = 0;
+    // Center vertically if smaller than screen (Fit Height usually fills it, but if zoomed out...)
+    dst_rect.y = (screen->h - scaled_h) / 2;
+    // Allow vertical pan adjustment
+    dst_rect.y += (int)manual.y_offset;
 
-    // Vertical scroll position
-    dst_rect.y = (int)manual.y_offset;
+    // Horizontal position based on offset
+    dst_rect.x = (screen->w - scaled_w) / 2; // Center horizontally by default
+    if (scaled_w > screen->w) {
+        // If wider than screen, align left then subtract offset
+        dst_rect.x = 0 - (int)manual.x_offset;
+    }
 
-    // Source logic for panning
+    // SDL Blit handles clipping, so we can just set dst_rect with negative coordinates
+    // But for correctness with src_rect:
     src_rect.x = 0;
     src_rect.y = 0;
     src_rect.w = scaled_w;
     src_rect.h = scaled_h;
 
-    // Horizontal panning (if scaled width > screen width)
-    if (scaled_w > screen->w) {
-        src_rect.x = (int)manual.x_offset;
-        if (src_rect.x < 0) src_rect.x = 0;
-        if (src_rect.x > scaled_w - screen->w) src_rect.x = scaled_w - screen->w;
+    // Adjust for negative dst_rect.x (panning right)
+    if (dst_rect.x < 0) {
+        src_rect.x = -dst_rect.x;
         dst_rect.x = 0;
+        if (src_rect.x > scaled_w - screen->w) src_rect.x = scaled_w - screen->w;
         src_rect.w = screen->w;
+    }
+    // Adjust for negative dst_rect.y (panning down)
+    if (dst_rect.y < 0) {
+        src_rect.y = -dst_rect.y;
+        dst_rect.y = 0;
+        if (src_rect.y > scaled_h - screen->h) src_rect.y = scaled_h - screen->h;
+        src_rect.h = screen->h;
     }
 
     // Vertical panning/scrolling
@@ -183,20 +195,53 @@ static void Manual_loop(char* pdf_path) {
             show_manual = 0;
         }
         else if (PAD_justPressed(BTN_RIGHT)) {
-            if (manual.current_page < manual.page_count - 1) {
-                manual.current_page++;
-                manual.y_offset = 0;
-                manual.x_offset = 0;
-                // manual.scale = 0; // Reset scale on page turn? Maybe keep it.
+            // Smart Navigation: Pan Right -> Next Page
+            // Calculate scaled width
+            fz_page *p = fz_load_page(manual.ctx, manual.doc, manual.current_page);
+            fz_rect b = fz_bound_page(manual.ctx, p);
+            float w = (b.x1 - b.x0) * manual.scale;
+            fz_drop_page(manual.ctx, p);
+
+            if (w > screen->w && manual.x_offset + screen->w < w) {
+                // Pan Right
+                manual.x_offset += screen->w * 0.9; // 90% overlap
+                if (manual.x_offset > w - screen->w) manual.x_offset = w - screen->w;
                 dirty = 1;
+            } else {
+                // Next Page
+                if (manual.current_page < manual.page_count - 1) {
+                    manual.current_page++;
+                    manual.x_offset = 0; // Reset to Left
+                    // manual.y_offset = 0; // Keep Y pos? User implies flow. Let's reset Y to be safe.
+                    manual.y_offset = 0;
+                    dirty = 1;
+                }
             }
         }
         else if (PAD_justPressed(BTN_LEFT)) {
-            if (manual.current_page > 0) {
-                manual.current_page--;
-                manual.y_offset = 0;
-                manual.x_offset = 0;
+            // Smart Navigation: Pan Left -> Prev Page
+            if (manual.x_offset > 0) {
+                // Pan Left
+                manual.x_offset -= screen->w * 0.9;
+                if (manual.x_offset < 0) manual.x_offset = 0;
                 dirty = 1;
+            } else {
+                // Prev Page
+                if (manual.current_page > 0) {
+                    manual.current_page--;
+
+                    // Reset to Right Edge if new page is wide
+                    fz_page *p = fz_load_page(manual.ctx, manual.doc, manual.current_page);
+                    fz_rect b = fz_bound_page(manual.ctx, p);
+                    float w = (b.x1 - b.x0) * manual.scale;
+                    fz_drop_page(manual.ctx, p);
+
+                    if (w > screen->w) manual.x_offset = w - screen->w;
+                    else manual.x_offset = 0;
+
+                    manual.y_offset = 0;
+                    dirty = 1;
+                }
             }
         }
         else if (PAD_isPressed(BTN_DOWN)) {
