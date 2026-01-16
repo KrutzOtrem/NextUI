@@ -20,18 +20,18 @@ if [ ! -d "$LIB_DIR" ]; then
 fi
 
 # Name of the output archive
-OUTPUT_ZIP="pdf_libs.zip"
+OUTPUT_ZIP="manual_plugin.zip"
 
-echo "Archiving PDF libraries..."
+echo "Archiving Manual Plugin..."
 
 # Navigate to the directory to keep paths clean in the zip
 cd "$LIB_DIR"
 
 # Zip the wrapper lib
-if [ -f libmupdf_wrapper.so ]; then
-    zip -y "$OUTPUT_ZIP" libmupdf_wrapper.so
+if [ -f libmanual_plugin.so ]; then
+    zip -y "$OUTPUT_ZIP" libmanual_plugin.so
     echo "Success! Archive created at: $LIB_DIR/$OUTPUT_ZIP"
 else
-    echo "Error: libmupdf_wrapper.so not found in $LIB_DIR."
+    echo "Error: libmanual_plugin.so not found in $LIB_DIR."
     echo "Did build_deps.sh complete successfully?"
 fi

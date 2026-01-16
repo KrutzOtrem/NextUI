@@ -5809,21 +5809,35 @@ static int OptionManual_openMenu(MenuList* list, int i) {
     return MENU_CALLBACK_NOP;
 }
 
-static MenuList options_menu = {
-	.type = MENU_LIST,
-	.items = (MenuItem[]) {
-		{"Frontend", "NextUI (" BUILD_DATE " " BUILD_HASH ")",.on_confirm=OptionFrontend_openMenu},
-		{"Emulator",.on_confirm=OptionEmulator_openMenu},
-		{"Shaders",.on_confirm=OptionShaders_openMenu},
-		{"Cheats",.on_confirm=OptionCheats_openMenu},
-		{"Controls",.on_confirm=OptionControls_openMenu},
-		{"Shortcuts",.on_confirm=OptionShortcuts_openMenu}, 
-		{"Manual",.on_confirm=OptionManual_openMenu},
-		{"Save Changes",.on_confirm=OptionSaveChanges_openMenu},
-		{NULL},
-		{NULL},
-	}
-};
+static int Options_openMenu(MenuList* list, int i) {
+    // Reconstruct options menu items to conditionally include Manual
+    static MenuItem items[10];
+    int count = 0;
+
+    items[count++] = (MenuItem){"Frontend", "NextUI (" BUILD_DATE " " BUILD_HASH ")",.on_confirm=OptionFrontend_openMenu};
+    items[count++] = (MenuItem){"Emulator",.on_confirm=OptionEmulator_openMenu};
+    items[count++] = (MenuItem){"Shaders",.on_confirm=OptionShaders_openMenu};
+    items[count++] = (MenuItem){"Cheats",.on_confirm=OptionCheats_openMenu};
+    items[count++] = (MenuItem){"Controls",.on_confirm=OptionControls_openMenu};
+    items[count++] = (MenuItem){"Shortcuts",.on_confirm=OptionShortcuts_openMenu};
+
+    if (Manual_isAvailable()) {
+        items[count++] = (MenuItem){"Manual",.on_confirm=OptionManual_openMenu};
+    }
+
+    items[count++] = (MenuItem){"Save Changes",.on_confirm=OptionSaveChanges_openMenu};
+    items[count++] = (MenuItem){NULL}; // Terminator
+
+    // Update the static menu list to point to our dynamic items array
+    options_menu.items = items;
+
+    // Update the "Save Changes" description which might have changed
+    OptionSaveChanges_updateDesc();
+    options_menu.items[count-2].desc = getSaveDesc(); // Save Changes is at count-2
+
+    Menu_options(&options_menu);
+    return MENU_CALLBACK_NOP;
+}
 
 static void OptionSaveChanges_updateDesc(void) {
 	options_menu.items[4].desc = getSaveDesc();
@@ -6719,7 +6733,7 @@ static void Menu_loop(void) {
 					}
 					else {
 						int old_scaling = screen_scaling;
-						Menu_options(&options_menu);
+						Options_openMenu(NULL, 0); // Use the new dynamic opener
 						if (screen_scaling!=old_scaling) {
 							selectScaler(renderer.true_w,renderer.true_h,renderer.src_p);
 						

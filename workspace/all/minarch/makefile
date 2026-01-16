@@ -41,10 +41,11 @@ CFLAGS   += -DHAS_SRM
 endif
 ifeq ($(PLATFORM), tg5040)
 TG5040_LIBS = ../../tg5040/libs
-ifneq (,$(wildcard $(TG5040_LIBS)/lib/libmupdf_wrapper.so))
-CFLAGS += -I$(TG5040_LIBS)/include -DENABLE_PDF_MANUAL
-LDFLAGS += -L$(TG5040_LIBS)/lib -lmupdf_wrapper -lm -Wl,-rpath,'$$ORIGIN/lib'
-endif
+# We always enable the PDF Manual code because it uses dlopen to load the backend.
+# This makes minarch generic and not dependent on the lib at build time.
+CFLAGS += -DENABLE_PDF_MANUAL
+# We need -ldl for dlopen
+LDFLAGS += -ldl
 CFLAGS += -DHAS_WIFIMG -DHAS_BTMG
 LDFLAGS +=  -lwifimg -lwifid
 LDFLAGS +=  -lbtmg -lglib-2.0 -lgio-2.0 -lshared-mainloop -lbluetooth-internal -lasound -ljson-c

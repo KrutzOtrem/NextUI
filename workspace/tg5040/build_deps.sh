@@ -22,7 +22,7 @@ JOBS=$(nproc)
 echo "Building dependencies in $WORK_DIR"
 echo "Installing to $INSTALL_DIR"
 
-# 1. Freetype (Restored to ensure SDL_ttf has what it needs)
+# 1. Freetype
 cd "$WORK_DIR"
 if [ ! -d "freetype-$FREETYPE_VER" ]; then
     echo "Downloading Freetype..."
@@ -31,7 +31,6 @@ if [ ! -d "freetype-$FREETYPE_VER" ]; then
 fi
 cd "freetype-$FREETYPE_VER"
 if [ ! -f Makefile ]; then
-     # Force out-of-tree build to avoid cross-compile detection issues mentioned in memory
      mkdir -p build
      cd build
      ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --enable-static --disable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
@@ -43,39 +42,30 @@ fi
 cd "$WORK_DIR"
 if [ ! -d "mupdf-$MUPDF_VER-source" ]; then
     echo "Downloading MuPDF..."
-    # Using a reliable mirror or upstream
     wget -c https://mupdf.com/downloads/archive/mupdf-$MUPDF_VER-source.tar.gz
     tar -xf mupdf-$MUPDF_VER-source.tar.gz
 fi
 cd "mupdf-$MUPDF_VER-source"
-
-# Clean previous build to be safe
 make clean
 
 echo "Building MuPDF (Static)..."
+make -j$JOBS CC="$CC" CXX="$CXX" AR="$AR" HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no HAVE_LIBCRYPTO=no USE_SYSTEM_LIBS=no prefix="$INSTALL_DIR" install
 
-# MuPDF static build
-make -j$JOBS \
-    CC="$CC" \
-    CXX="$CXX" \
-    AR="$AR" \
-    HAVE_X11=no \
-    HAVE_GLUT=no \
-    HAVE_CURL=no \
-    HAVE_LIBCRYPTO=no \
-    USE_SYSTEM_LIBS=no \
-    prefix="$INSTALL_DIR" \
-    install
+echo "Creating Shared Object Plugin (libmanual_plugin.so)..."
 
-echo "Creating Shared Object (libmupdf_wrapper.so)..."
-# We combine the static libs into a single shared lib to keep minarch.elf small
-# -Wl,--whole-archive ensures we keep all symbols from the static libs
-# -lm is needed for math functions
-# -fPIC should theoretically have been used during static compile, but often works on ARM without it or if MuPDF sets it.
-# Note: If MuPDF wasn't built with -fPIC, this link might fail. MuPDF usually enables it.
+# We compile the manual_plugin.c source and link it with MuPDF/Freetype into a shared object.
+# We need SDL2 headers. Assuming they are in toolchain path or we need pkg-config.
+# Toolchain environment usually has SDL2-config or pkg-config.
+# Using $(sdl2-config --cflags) logic, but here we are in bash.
+# Assuming standard include path /usr/include/SDL2 or similar in sysroot.
+# Let's try explicit -I flags if needed, or rely on toolchain.
+# The toolchain usually has SDL2 in the sysroot.
 
-$CC -shared -o "$INSTALL_DIR/lib/libmupdf_wrapper.so" \
+$CC -shared -fPIC -o "$INSTALL_DIR/lib/libmanual_plugin.so" \
+    "$SCRIPT_DIR/manual_plugin.c" \
+    -I"$INSTALL_DIR/include" \
+    -I"$SCRIPT_DIR/../all/common" \
     -Wl,--whole-archive "$INSTALL_DIR/lib/libmupdf.a" "$INSTALL_DIR/lib/libmupdf-third.a" -Wl,--no-whole-archive \
     -lm
 
-echo "Done! Libraries installed to $INSTALL_DIR"
+echo "Done! Plugin created at $INSTALL_DIR/lib/libmanual_plugin.so"
