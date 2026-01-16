@@ -62,6 +62,7 @@ make -j$JOBS \
     HAVE_X11=no \
     HAVE_GLUT=no \
     HAVE_CURL=no \
+    HAVE_LIBCRYPTO=no \
     USE_SYSTEM_LIBS=no \
     prefix="$INSTALL_DIR" \
     install
