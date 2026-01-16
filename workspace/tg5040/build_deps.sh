@@ -52,7 +52,7 @@ cd "mupdf-$MUPDF_VER-source"
 # Clean previous build to be safe
 make clean
 
-echo "Building MuPDF..."
+echo "Building MuPDF (Static)..."
 
 # MuPDF static build
 make -j$JOBS \
@@ -66,5 +66,16 @@ make -j$JOBS \
     USE_SYSTEM_LIBS=no \
     prefix="$INSTALL_DIR" \
     install
+
+echo "Creating Shared Object (libmupdf_wrapper.so)..."
+# We combine the static libs into a single shared lib to keep minarch.elf small
+# -Wl,--whole-archive ensures we keep all symbols from the static libs
+# -lm is needed for math functions
+# -fPIC should theoretically have been used during static compile, but often works on ARM without it or if MuPDF sets it.
+# Note: If MuPDF wasn't built with -fPIC, this link might fail. MuPDF usually enables it.
+
+$CC -shared -o "$INSTALL_DIR/lib/libmupdf_wrapper.so" \
+    -Wl,--whole-archive "$INSTALL_DIR/lib/libmupdf.a" "$INSTALL_DIR/lib/libmupdf-third.a" -Wl,--no-whole-archive \
+    -lm
 
 echo "Done! Libraries installed to $INSTALL_DIR"

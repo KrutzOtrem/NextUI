@@ -41,9 +41,9 @@ CFLAGS   += -DHAS_SRM
 endif
 ifeq ($(PLATFORM), tg5040)
 TG5040_LIBS = ../../tg5040/libs
-ifneq (,$(wildcard $(TG5040_LIBS)/lib/libmupdf.a))
+ifneq (,$(wildcard $(TG5040_LIBS)/lib/libmupdf_wrapper.so))
 CFLAGS += -I$(TG5040_LIBS)/include -DENABLE_PDF_MANUAL
-LDFLAGS += -L$(TG5040_LIBS)/lib -lmupdf -lmupdf-third -lm
+LDFLAGS += -L$(TG5040_LIBS)/lib -lmupdf_wrapper -lm -Wl,-rpath,'$$ORIGIN/lib'
 endif
 CFLAGS += -DHAS_WIFIMG -DHAS_BTMG
 LDFLAGS +=  -lwifimg -lwifid
