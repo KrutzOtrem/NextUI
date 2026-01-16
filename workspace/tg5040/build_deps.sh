@@ -13,8 +13,6 @@ mkdir -p "$INSTALL_DIR/bin"
 export PATH="$INSTALL_DIR/bin:$PATH"
 
 # PKG_CONFIG_PATH SETUP
-# We need our local libs AND the system libs (for glib-2.0)
-# Found system pkgconfig at: /opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig
 SYSTEM_PKG_PATH="/opt/aarch64-nextui-linux-gnu/aarch64-nextui-linux-gnu/libc/usr/lib/pkgconfig"
 export PKG_CONFIG_PATH="$INSTALL_DIR/lib/pkgconfig:$SYSTEM_PKG_PATH:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$INSTALL_DIR/lib:$LD_LIBRARY_PATH"
@@ -89,7 +87,6 @@ FREETYPE_VER="2.13.0"
 # 1. Pixman
 cd "$WORK_DIR"
 if [ ! -d "pixman-$PIXMAN_VER" ]; then
-    echo "Downloading Pixman..."
     wget -c https://www.cairographics.org/releases/pixman-$PIXMAN_VER.tar.gz
     tar -xf pixman-$PIXMAN_VER.tar.gz
 fi
@@ -103,7 +100,6 @@ make install
 # 2. Freetype
 cd "$WORK_DIR"
 if [ ! -d "freetype-$FREETYPE_VER" ]; then
-    echo "Downloading Freetype..."
     wget -c https://download.savannah.gnu.org/releases/freetype/freetype-$FREETYPE_VER.tar.gz
     tar -xf freetype-$FREETYPE_VER.tar.gz
 fi
@@ -119,7 +115,6 @@ make install
 cd "$WORK_DIR"
 if [ -d "fontconfig-$FONTCONFIG_VER" ]; then rm -rf "fontconfig-$FONTCONFIG_VER"; fi
 if [ ! -d "fontconfig-$FONTCONFIG_VER" ]; then
-    echo "Downloading Fontconfig..."
     wget -c https://www.freedesktop.org/software/fontconfig/release/fontconfig-$FONTCONFIG_VER.tar.gz
     tar -xf fontconfig-$FONTCONFIG_VER.tar.gz
 fi
@@ -135,7 +130,6 @@ cd "$WORK_DIR"
 rm -rf cairo-1.17.*
 if [ -d "cairo-$CAIRO_VER" ]; then rm -rf "cairo-$CAIRO_VER"; fi
 if [ ! -d "cairo-$CAIRO_VER" ]; then
-    echo "Downloading Cairo..."
     wget -c https://www.cairographics.org/releases/cairo-$CAIRO_VER.tar.xz
     tar -xf cairo-$CAIRO_VER.tar.xz
 fi
@@ -148,76 +142,91 @@ export pixman_LIBS="-L$INSTALL_DIR/lib -lpixman-1"
 make -j$JOBS
 make install
 
-# 5. Poppler (Download Pre-compiled ARM64)
-# We use Debian Buster (Debian 10) as a safe baseline for glibc compatibility
-echo "Downloading pre-compiled Poppler ARM64 packages..."
+# 5. Poppler Dependencies (Libs needed by the pre-compiled Poppler)
+echo "Downloading pre-compiled Poppler dependencies (Debian ARM64)..."
 cd "$WORK_DIR"
 
-# URLs for libpoppler-glib8 and libpoppler82 (compatible versions from Buster)
-# Update: Using archive.debian.org because these older versions might be removed from main pool
-POPPLER_GLIB_DEB="libpoppler-glib8_0.71.0-5_arm64.deb"
-POPPLER_CORE_DEB="libpoppler82_0.71.0-5_arm64.deb"
-POPPLER_DEV_DEB="libpoppler-glib-dev_0.71.0-5_arm64.deb"
-
-# Clean old artifacts
-rm -f *.deb
-rm -rf extract_poppler
-
-# Download from Archive
-wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_GLIB_DEB
-wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_CORE_DEB
-wget -c http://archive.debian.org/debian/pool/main/p/poppler/$POPPLER_DEV_DEB
+# URLs from Debian Buster Archive
+DEPS_URLS=(
+    "http://archive.debian.org/debian/pool/main/p/poppler/libpoppler-glib8_0.71.0-5_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/p/poppler/libpoppler82_0.71.0-5_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/p/poppler/libpoppler-glib-dev_0.71.0-5_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/t/tiff/libtiff5_4.1.0-2_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/l/lcms2/liblcms2-2_2.9-3_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/o/openjpeg2/libopenjp2-7_2.3.0-2+deb10u1_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/libj/libjpeg-turbo/libjpeg62-turbo_1.5.2-2+b1_arm64.deb"
+    "http://archive.debian.org/debian/pool/main/libp/libpng/libpng16-16_1.6.36-6_arm64.deb"
+)
 
 mkdir -p extract_poppler
 cd extract_poppler
 
 # Extract function
 extract_deb() {
-    ar x "../$1"
+    FILE=$(basename "$1")
+    if [ ! -f "../$FILE" ]; then
+        wget -c "$1" -O "../$FILE"
+    fi
+    ar x "../$FILE"
     if [ -f "data.tar.xz" ]; then tar -xf data.tar.xz; elif [ -f "data.tar.gz" ]; then tar -xf data.tar.gz; fi
     rm -f control.tar.* data.tar.* debian-binary
 }
 
-extract_deb "$POPPLER_GLIB_DEB"
-extract_deb "$POPPLER_CORE_DEB"
-extract_deb "$POPPLER_DEV_DEB"
+for URL in "${DEPS_URLS[@]}"; do
+    echo "Processing $URL..."
+    extract_deb "$URL"
+done
 
-echo "Installing Poppler files..."
-# Copy libs
-# Preserve links is important here
+echo "Installing Libs..."
+# Copy libs (preserve links)
 cp -P -r usr/lib/aarch64-linux-gnu/* "$INSTALL_DIR/lib/"
-
 # Copy headers
 mkdir -p "$INSTALL_DIR/include"
-cp -r usr/include/poppler "$INSTALL_DIR/include/"
+cp -r usr/include/* "$INSTALL_DIR/include/"
 
 # Cleanup
 cd "$WORK_DIR"
 rm -rf extract_poppler
 
-# Fix symlinks if needed (Debian often splits .so and .so.X)
-# We need libpoppler-glib.so pointing to the real file for linking
+# Fix symlinks for linking
 cd "$INSTALL_DIR/lib"
-if [ ! -f "libpoppler-glib.so" ]; then
-    # Find the real file (e.g. libpoppler-glib.so.8)
-    REAL_LIB=$(ls libpoppler-glib.so.* | head -n 1)
-    if [ -n "$REAL_LIB" ]; then
-        ln -sf "$REAL_LIB" libpoppler-glib.so
-        echo "Created symlink for $REAL_LIB"
+create_link() {
+    TARGET=$1
+    LINKNAME=$2
+    if [ ! -f "$LINKNAME" ]; then
+        if [ -f "$TARGET" ]; then
+            ln -sf "$TARGET" "$LINKNAME"
+            echo "Created symlink $LINKNAME -> $TARGET"
+        fi
     fi
-fi
-if [ ! -f "libpoppler.so" ]; then
-    REAL_LIB=$(ls libpoppler.so.* | head -n 1)
-    if [ -n "$REAL_LIB" ]; then
-        ln -sf "$REAL_LIB" libpoppler.so
-        echo "Created symlink for $REAL_LIB"
-    fi
-fi
+}
+
+# Poppler
+create_link "libpoppler-glib.so.8" "libpoppler-glib.so"
+create_link "libpoppler.so.82" "libpoppler.so"
+
+# Deps
+# Find actual filenames for symlinking (names might vary slightly)
+TIFF_LIB=$(ls libtiff.so.5.* | head -n1)
+LCMS_LIB=$(ls liblcms2.so.2.* | head -n1)
+OJP2_LIB=$(ls libopenjp2.so.7.* | head -n1)
+JPEG_LIB=$(ls libjpeg.so.62.* | head -n1)
+PNG_LIB=$(ls libpng16.so.16.* | head -n1)
+
+create_link "$TIFF_LIB" "libtiff.so"
+create_link "$LCMS_LIB" "liblcms2.so"
+create_link "$OJP2_LIB" "libopenjp2.so"
+create_link "$JPEG_LIB" "libjpeg.so"
+create_link "$PNG_LIB" "libpng.so"
+create_link "$PNG_LIB" "libpng16.so"
 
 # Verification
 if [ ! -f "$INSTALL_DIR/lib/libpoppler-glib.so" ]; then
-    echo "ERROR: Failed to install libpoppler-glib.so from binaries!"
+    echo "ERROR: Failed to install libpoppler-glib.so!"
     exit 1
+fi
+if [ ! -f "$INSTALL_DIR/lib/libtiff.so" ]; then
+    echo "WARNING: libtiff.so not found, linking might fail."
 fi
 
 echo "Done! Libraries installed to $INSTALL_DIR"

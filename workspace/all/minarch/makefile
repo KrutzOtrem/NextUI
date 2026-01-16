@@ -49,7 +49,7 @@ CFLAGS += $(shell pkg-config --cflags glib-2.0 gio-2.0 gobject-2.0) -DENABLE_PDF
 
 # Manually add library paths and link flags
 # -Wl,-rpath-link is needed so the linker can find transitive dependencies (like libpoppler.so.82 required by libpoppler-glib.so)
-LDFLAGS += -L$(LOCAL_LIBS_DIR)/lib -Wl,-rpath-link=$(LOCAL_LIBS_DIR)/lib -lpoppler-glib -lpoppler -lcairo -lpixman-1 -lfreetype -lfontconfig
+LDFLAGS += -L$(LOCAL_LIBS_DIR)/lib -Wl,-rpath-link=$(LOCAL_LIBS_DIR)/lib -lpoppler-glib -lpoppler -lcairo -lpixman-1 -lfreetype -lfontconfig -ltiff -llcms2 -lopenjp2 -lpng16 -ljpeg
 # Add system glib libs
 LDFLAGS += $(shell pkg-config --libs glib-2.0 gio-2.0 gobject-2.0)
 

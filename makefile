@@ -121,6 +121,11 @@ ifeq ($(PLATFORM), tg5040)
 	-cp ./workspace/tg5040/libs/lib/libpixman-1.so* ./build/SYSTEM/$(PLATFORM)/lib/
 	-cp ./workspace/tg5040/libs/lib/libfreetype.so* ./build/SYSTEM/$(PLATFORM)/lib/
 	-cp ./workspace/tg5040/libs/lib/libfontconfig.so* ./build/SYSTEM/$(PLATFORM)/lib/
+	-cp ./workspace/tg5040/libs/lib/libtiff.so* ./build/SYSTEM/$(PLATFORM)/lib/
+	-cp ./workspace/tg5040/libs/lib/liblcms2.so* ./build/SYSTEM/$(PLATFORM)/lib/
+	-cp ./workspace/tg5040/libs/lib/libopenjp2.so* ./build/SYSTEM/$(PLATFORM)/lib/
+	-cp ./workspace/tg5040/libs/lib/libpng16.so* ./build/SYSTEM/$(PLATFORM)/lib/
+	-cp ./workspace/tg5040/libs/lib/libjpeg.so* ./build/SYSTEM/$(PLATFORM)/lib/
 endif
 
 
