@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <SDL2/SDL.h>
 
 #include "defines.h"
 #include "api.h"
@@ -12,10 +13,7 @@
 #include "manual.h"
 
 #ifdef ENABLE_PDF_MANUAL
-#include <glib.h>
-#include <glib/poppler.h>
-#include <cairo.h>
-#include <SDL2/SDL.h>
+#include <mupdf/fitz.h>
 
 // External variables from minarch.c
 extern SDL_Surface* screen;
@@ -24,81 +22,80 @@ void Menu_beforeSleep();
 void Menu_afterSleep();
 
 typedef struct {
-    PopplerDocument *doc;
+    fz_context *ctx;
+    fz_document *doc;
     int page_count;
     int current_page;
-    double scale;
-    double x_offset;
-    double y_offset;
-    int rotation; // 0, 90, 180, 270
+    float scale;
+    float x_offset;
+    float y_offset;
+    int rotation;
 } ManualState;
 
 static ManualState manual = {0};
 
 static void Manual_render(void) {
-    if (!manual.doc) return;
+    if (!manual.doc || !manual.ctx) return;
 
-    PopplerPage *page = poppler_document_get_page(manual.doc, manual.current_page);
-    if (!page) return;
+    fz_page *page = NULL;
+    fz_pixmap *pix = NULL;
+    fz_matrix ctm;
 
-    double width, height;
-    poppler_page_get_size(page, &width, &height);
-
-    // Calculate scale to fit width if scale is 0 (initial)
-    if (manual.scale == 0) {
-        manual.scale = (double)screen->w / width;
-        // Optionally fit height if it fits better?
-        // For reading, width fit is usually better.
+    // Load page
+    fz_try(manual.ctx) {
+        page = fz_load_page(manual.ctx, manual.doc, manual.current_page);
+    } fz_catch(manual.ctx) {
+        LOG_error("Failed to load page %d\n", manual.current_page);
+        return;
     }
+
+    // Calculate dimensions
+    fz_rect bounds = fz_bound_page(manual.ctx, page);
+    float width = bounds.x1 - bounds.x0;
+    float height = bounds.y1 - bounds.y0;
+
+    // Initial Auto-fit width if scale is 0
+    if (manual.scale == 0) {
+        manual.scale = (float)screen->w / width;
+    }
+
+    // Set up transform
+    ctm = fz_scale(manual.scale, manual.scale);
+    // Apply rotation if needed (not implemented in controls yet but good to have)
+    // fz_rotate(&ctm, manual.rotation);
 
     int scaled_w = (int)(width * manual.scale);
     int scaled_h = (int)(height * manual.scale);
 
-    // Create cairo surface for the page
-    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, scaled_w, scaled_h);
-    cairo_t *cr = cairo_create(surface);
+    // Render to pixmap
+    fz_try(manual.ctx) {
+        pix = fz_new_pixmap_from_page(manual.ctx, page, ctm, fz_device_rgb(manual.ctx), 0);
+    } fz_catch(manual.ctx) {
+        LOG_error("Failed to render page\n");
+        fz_drop_page(manual.ctx, page);
+        return;
+    }
 
-    // Fill white background
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    cairo_paint(cr);
-
-    // Apply scale and render
-    cairo_scale(cr, manual.scale, manual.scale);
-    poppler_page_render(page, cr);
-
-    cairo_destroy(cr);
-    g_object_unref(page);
-
-    // Blit to SDL screen
-    unsigned char *data = cairo_image_surface_get_data(surface);
-    int stride = cairo_image_surface_get_stride(surface);
-
-    // Cairo uses ARGB (premultiplied), SDL uses whatever screen is set to (usually RGB565 or ARGB8888)
-    // Assuming screen is 32-bit ARGB or RGBA for now based on minarch.c code
-
-    SDL_Surface *page_surf = SDL_CreateRGBSurfaceWithFormatFrom(data, scaled_w, scaled_h, 32, stride, SDL_PIXELFORMAT_ARGB8888);
-
-    // Clear screen
+    // Clear screen first
     SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format, 20, 20, 20));
 
+    // Calculate blit positions
+    SDL_Rect src_rect, dst_rect;
+
     // Center horizontally if smaller than screen
-    SDL_Rect dst_rect;
     dst_rect.x = (screen->w - scaled_w) / 2;
-    if (dst_rect.x < 0) dst_rect.x = 0; // Should handle panning later
+    if (dst_rect.x < 0) dst_rect.x = 0;
 
-    // Vertical position based on offset
-    dst_rect.y = (int)manual.y_offset; // Simple scrolling
-    dst_rect.w = scaled_w;
-    dst_rect.h = scaled_h;
+    // Vertical scroll position
+    dst_rect.y = (int)manual.y_offset;
 
-    // Handle panning logic for blit
-    SDL_Rect src_rect;
+    // Source logic for panning
     src_rect.x = 0;
     src_rect.y = 0;
     src_rect.w = scaled_w;
     src_rect.h = scaled_h;
 
-    // Adjust for horizontal scrolling
+    // Horizontal panning (if scaled width > screen width)
     if (scaled_w > screen->w) {
         src_rect.x = (int)manual.x_offset;
         if (src_rect.x < 0) src_rect.x = 0;
@@ -107,46 +104,69 @@ static void Manual_render(void) {
         src_rect.w = screen->w;
     }
 
-    // Adjust for vertical scrolling
-    if (dst_rect.y < 0) {
-        src_rect.y = -dst_rect.y;
-        dst_rect.y = 0;
-        if (src_rect.y > scaled_h - screen->h) src_rect.y = scaled_h - screen->h;
-        src_rect.h = screen->h;
+    // Vertical panning/scrolling
+    // Since we render the whole page to a pixmap (which can be large), we just use SDL blit to clip.
+    // However, for very large pages, rendering the whole thing might be slow/heavy.
+    // MuPDF allows rendering a specific bbox. For optimization later if needed.
+
+    // Adjust dst_rect if it's off screen (standard SDL blit handles clipping, but we want to adjust src_rect for efficiency if we were rendering partial)
+    // For now, simple blit of the whole pixmap (clipped by SDL)
+
+    // Handle the scrolling offset:
+    // If y_offset is negative (scrolled down), we draw the image higher up.
+    // dst_rect.y is negative.
+
+    // Create temporary surface from pixmap data
+    // MuPDF RGB pixmaps are r,g,b (no alpha unless requested).
+    // fz_device_rgb implies 3 components.
+    // However, SDL usually wants 4 byte alignment or specific format.
+    // We'll create a surface from the data.
+
+    unsigned char *samples = fz_pixmap_samples(manual.ctx, pix);
+    int w = fz_pixmap_width(manual.ctx, pix);
+    int h = fz_pixmap_height(manual.ctx, pix);
+    int stride = fz_pixmap_stride(manual.ctx, pix);
+
+    // MuPDF provides RGB. SDL_CreateRGBSurfaceWithFormatFrom works best if we match the format.
+    // We use SDL_PIXELFORMAT_RGB24.
+    SDL_Surface *page_surf = SDL_CreateRGBSurfaceWithFormatFrom(samples, w, h, 24, stride, SDL_PIXELFORMAT_RGB24);
+
+    if (page_surf) {
+        SDL_BlitSurface(page_surf, &src_rect, screen, &dst_rect);
+        SDL_FreeSurface(page_surf);
     }
 
-    SDL_BlitSurface(page_surf, &src_rect, screen, &dst_rect);
-    SDL_FreeSurface(page_surf);
-    cairo_surface_destroy(surface);
-
-    // Render Overlay Info (Page number)
-    char info[64];
-    snprintf(info, sizeof(info), "Page %d / %d", manual.current_page + 1, manual.page_count);
-    // Assuming GFX functions are available or we use basic SDL rendering
-    // For now, let's just rely on the visual page content
+    // Cleanup MuPDF objects
+    fz_drop_pixmap(manual.ctx, pix);
+    fz_drop_page(manual.ctx, page);
 }
 
 static void Manual_loop(char* pdf_path) {
-    GError *error = NULL;
-    char *uri = g_filename_to_uri(pdf_path, NULL, &error);
-    if (!uri) {
-        LOG_error("Failed to create URI: %s\n", error->message);
-        g_error_free(error);
+    manual.ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+    if (!manual.ctx) {
+        LOG_error("Failed to create MuPDF context\n");
         return;
     }
 
-    manual.doc = poppler_document_new_from_file(uri, NULL, &error);
-    g_free(uri);
+    fz_register_document_handlers(manual.ctx);
 
-    if (!manual.doc) {
-        LOG_error("Failed to open PDF: %s\n", error->message);
-        g_error_free(error);
+    fz_try(manual.ctx) {
+        manual.doc = fz_open_document(manual.ctx, pdf_path);
+    } fz_catch(manual.ctx) {
+        LOG_error("Failed to open PDF: %s\n", pdf_path);
+        fz_drop_context(manual.ctx);
+        manual.ctx = NULL;
         return;
     }
 
-    manual.page_count = poppler_document_get_n_pages(manual.doc);
+    fz_try(manual.ctx) {
+        manual.page_count = fz_count_pages(manual.ctx, manual.doc);
+    } fz_catch(manual.ctx) {
+        manual.page_count = 0;
+    }
+
     manual.current_page = 0;
-    manual.scale = 0; // Auto-fit width
+    manual.scale = 0; // Trigger auto-fit
     manual.x_offset = 0;
     manual.y_offset = 0;
 
@@ -166,6 +186,8 @@ static void Manual_loop(char* pdf_path) {
             if (manual.current_page < manual.page_count - 1) {
                 manual.current_page++;
                 manual.y_offset = 0;
+                manual.x_offset = 0;
+                // manual.scale = 0; // Reset scale on page turn? Maybe keep it.
                 dirty = 1;
             }
         }
@@ -173,34 +195,57 @@ static void Manual_loop(char* pdf_path) {
             if (manual.current_page > 0) {
                 manual.current_page--;
                 manual.y_offset = 0;
+                manual.x_offset = 0;
                 dirty = 1;
             }
         }
         else if (PAD_isPressed(BTN_DOWN)) {
-             manual.y_offset -= 10; // Scroll down moves content up
+             manual.y_offset -= 20; // Scroll speed
              dirty = 1;
         }
         else if (PAD_isPressed(BTN_UP)) {
-             manual.y_offset += 10;
+             manual.y_offset += 20;
              if (manual.y_offset > 0) manual.y_offset = 0;
              dirty = 1;
         }
         else if (PAD_isPressed(BTN_R1)) { // Zoom in
-            manual.scale *= 1.02;
-            dirty = 1;
+            if (manual.scale < 5.0) {
+                manual.scale *= 1.05;
+                dirty = 1;
+            }
         }
         else if (PAD_isPressed(BTN_L1)) { // Zoom out
-            manual.scale /= 1.02;
-            dirty = 1;
+            if (manual.scale > 0.1) {
+                manual.scale /= 1.05;
+                dirty = 1;
+            }
+        }
+
+        // Handle panning X if zoomed in
+        if (PAD_isPressed(BTN_R2)) { // Pan Right
+             manual.x_offset += 20;
+             dirty = 1;
+        }
+        if (PAD_isPressed(BTN_L2)) { // Pan Left
+             manual.x_offset -= 20;
+             if (manual.x_offset < 0) manual.x_offset = 0;
+             dirty = 1;
         }
 
         // PWR update (handle sleep etc)
-        int show_setting = 0; // Dummy
+        int show_setting = 0;
         PWR_update(&dirty, &show_setting, Menu_beforeSleep, Menu_afterSleep);
 
         if (dirty) {
-            GFX_clear(screen);
+            // Draw
             Manual_render();
+
+            // Draw page info overlay
+            char info[64];
+            snprintf(info, sizeof(info), "%d / %d", manual.current_page + 1, manual.page_count);
+            // Assuming we can use font.small from minarch.c (extern it if needed, or just skip)
+            // For now, skipping text overlay to avoid dep on minarch internals not exposed
+
             GFX_flip(screen);
             dirty = 0;
         } else {
@@ -208,8 +253,10 @@ static void Manual_loop(char* pdf_path) {
         }
     }
 
-    g_object_unref(manual.doc);
+    fz_drop_document(manual.ctx, manual.doc);
+    fz_drop_context(manual.ctx);
     manual.doc = NULL;
+    manual.ctx = NULL;
 }
 #endif
 
@@ -260,7 +307,6 @@ void Manual_open(char* rom_path) {
     closedir(d);
 
     if (count == 0) {
-        // No manuals
         return;
     }
 
@@ -288,7 +334,7 @@ void Manual_open(char* rom_path) {
              snprintf(best_match, sizeof(best_match), "%s/%s", target_dir, pdf_files[0]);
              found_match = 1;
         } else {
-             // Fallback to first if multiple and no match (temporary behavior)
+             // Fallback to first if multiple and no match
              snprintf(best_match, sizeof(best_match), "%s/%s", target_dir, pdf_files[0]);
              found_match = 1;
         }
