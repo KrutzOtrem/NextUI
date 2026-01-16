@@ -34,7 +34,7 @@ if [ ! -f Makefile ]; then
      # Force out-of-tree build to avoid cross-compile detection issues mentioned in memory
      mkdir -p build
      cd build
-     ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --disable-static --enable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
+     ../configure --prefix="$INSTALL_DIR" --host=$CROSS_TRIPLE --enable-static --disable-shared --without-brotli --without-harfbuzz --without-png --without-zlib
      make -j$JOBS
      make install
 fi
