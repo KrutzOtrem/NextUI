@@ -1,6 +1,7 @@
 CORES= a2600
 CORES+= a5200
 CORES+= a7800
+CORES+= atari800
 CORES+= handy
 CORES+= c64
 CORES+= c128
@@ -45,6 +46,10 @@ a5200_CORE = a5200_libretro.so
 
 a7800_CORE = prosystem_libretro.so
 a7800_REPO = https://github.com/libretro/prosystem-libretro
+
+atari800_REPO = https://github.com/libretro/libretro-atari800
+atari800_CORE = atari800_libretro.so
+atari800_MAKEFILE = Makefile
 
 handy_REPO = https://github.com/libretro/libretro-handy
 
