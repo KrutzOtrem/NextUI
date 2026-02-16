@@ -3067,9 +3067,8 @@ int main (int argc, char *argv[]) {
 						// TODO: Use actual font metrics to center, this only works in simple cases
 						const int text_offset_y = (SCALE1(PILL_SIZE) - text->h + 1) >> 1;
 						if (row_is_selected) {
-							is_scrolling = GFX_textShouldScroll(font.large,display_name, max_width - SCALE1(BUTTON_PADDING*2), fontMutex);
+							is_scrolling = list_show_entry_names && GFX_textShouldScroll(font.large,display_name, max_width - SCALE1(BUTTON_PADDING*2), fontMutex);
 							GFX_resetScrollText();
-							bool is_scrolling = previous_depth == stack->count;
 							SDL_LockMutex(animMutex);
 							if(globalpill) { 
 								SDL_FreeSurface(globalpill); 
