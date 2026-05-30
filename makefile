@@ -38,7 +38,7 @@ RELEASE_NAME ?= $(RELEASE_BASE)-$(RELEASE_DOT)
 VENDOR_DEST := ./build/VENDOR/Tools
 PACKAGE_URL_MAPPINGS := \
 	"https://github.com/UncleJunVIP/nextui-pak-store/releases/latest/download/Pak.Store.pakz nextui.pak_store.pakz" \
-	"https://github.com/frysee/nextui-updater-pak/releases/latest/download/nextui.updater.pakz nextui.updater.pakz"
+	"https://github.com/LoveRetro/nextui-updater-pak/releases/latest/download/nextui.updater.pakz nextui.updater.pakz"
 	# add more URLs as needed
 
 ###########################################################
@@ -110,6 +110,8 @@ ifeq ($(PLATFORM), tg5040)
 	# Limbo fix
 	cp ./workspace/$(PLATFORM)/poweroff_next/build/$(PLATFORM)/poweroff_next.elf ./build/SYSTEM/$(PLATFORM)/bin/poweroff_next
 endif
+endif
+ifneq (,$(filter $(PLATFORM),tg5040 tg5050 my355))
 	# Audio resampling
 	cp ./workspace/all/minarch/build/$(PLATFORM)/libsamplerate.* ./build/SYSTEM/$(PLATFORM)/lib/
 
@@ -119,8 +121,9 @@ endif
 	cp ./workspace/all/minarch/build/$(PLATFORM)/liblzma.* ./build/SYSTEM/$(PLATFORM)/lib/
 	cp ./workspace/all/minarch/build/$(PLATFORM)/libzstd.* ./build/SYSTEM/$(PLATFORM)/lib/
 
-	# libchdr for RetroAchievements CHD hashing (use -L to dereference symlinks)
-	cp -L ./workspace/all/minarch/build/$(PLATFORM)/libchdr.so.0 ./build/SYSTEM/$(PLATFORM)/lib/
+	# libchdr and libcrypto for RetroAchievements
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libchdr.so.* ./build/SYSTEM/$(PLATFORM)/lib/
+	cp ./workspace/all/minarch/build/$(PLATFORM)/libcrypto.so.* ./build/SYSTEM/$(PLATFORM)/lib/
 
 ifeq ($(PLATFORM), tg5040)
 	# liblz4 for Rewind support
@@ -149,6 +152,7 @@ cores: # TODO: can't assume every platform will have the same stock cores (platf
 	cp ./workspace/$(PLATFORM)/cores/output/prosystem_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/A7800.pak
 	cp ./workspace/$(PLATFORM)/cores/output/stella2014_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/A2600.pak
 	cp ./workspace/$(PLATFORM)/cores/output/handy_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/LYNX.pak
+	cp ./workspace/$(PLATFORM)/cores/output/fake08_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/P8.pak
 	cp ./workspace/$(PLATFORM)/cores/output/mgba_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/MGBA.pak
 	cp ./workspace/$(PLATFORM)/cores/output/mgba_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/SGB.pak
 	cp ./workspace/$(PLATFORM)/cores/output/mednafen_pce_fast_libretro.so ./build/EXTRAS/Emus/$(PLATFORM)/PCE.pak

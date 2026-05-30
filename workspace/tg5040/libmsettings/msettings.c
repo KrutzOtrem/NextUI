@@ -500,9 +500,15 @@ static inline void SaveSettings(void) {
 ///////// Getters exposed in public API
 
 int GetBrightness(void) { // 0-10
+	if (settings->mute && GetMutedBrightness() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return GetMutedBrightness();
+
 	return settings->brightness;
 }
 int GetColortemp(void) { // 0-10
+	if (settings->mute && GetMutedColortemp() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return GetMutedColortemp();
+
 	return settings->colortemperature;
 }
 int GetVolume(void) { // 0-20
@@ -513,6 +519,27 @@ int GetVolume(void) { // 0-20
 		return settings->headphones;
 
 	return settings->speaker;
+}
+int GetContrast(void)
+{
+	if (settings->mute && GetMutedContrast() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return GetMutedContrast();
+
+	return settings->contrast;
+}
+int GetSaturation(void)
+{
+	if (settings->mute && GetMutedSaturation() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return GetMutedSaturation();
+
+	return settings->saturation;
+}
+int GetExposure(void)
+{
+	if (settings->mute && GetMutedExposure() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return GetMutedExposure();
+
+	return settings->exposure;
 }
 // monitored and set by thread in keymon
 int GetJack(void) {
@@ -529,18 +556,6 @@ int GetHDMI(void) {
 
 int GetMute(void) {
 	return settings->mute;
-}
-int GetContrast(void)
-{
-	return settings->contrast;
-}
-int GetSaturation(void)
-{
-	return settings->saturation;
-}
-int GetExposure(void)
-{
-	return settings->exposure;
 }
 int GetMutedBrightness(void)
 {
@@ -610,25 +625,55 @@ int GetMuteTurboR2(void)
 ///////// Setters exposed in public API
 
 void SetBrightness(int value) {
+	if (settings->mute && GetMutedBrightness() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return SetRawBrightness(scaleBrightness(GetMutedBrightness()));
+
 	SetRawBrightness(scaleBrightness(value));
 	settings->brightness = value;
 	SaveSettings();
 }
 void SetColortemp(int value) {
+	if (settings->mute && GetMutedColortemp() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return SetRawColortemp(scaleColortemp(GetMutedColortemp()));
+
 	SetRawColortemp(scaleColortemp(value));
 	settings->colortemperature = value;
 	SaveSettings();
 }
-void SetVolume(int value) { // 0-20
-	if (settings->mute) 
+void SetContrast(int value) {
+	if (settings->mute && GetMutedContrast() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return SetRawContrast(scaleContrast(GetMutedContrast()));
+
+	SetRawContrast(scaleContrast(value));
+	settings->contrast = value;
+	SaveSettings();
+}
+void SetSaturation(int value) {
+	if (settings->mute && GetMutedSaturation() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return SetRawSaturation(scaleSaturation(GetMutedSaturation()));
+
+	SetRawSaturation(scaleSaturation(value));
+	settings->saturation = value;
+	SaveSettings();
+}
+void SetExposure(int value){
+	if (settings->mute && GetMutedExposure() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
+		return SetRawExposure(scaleExposure(GetMutedExposure()));
+
+	SetRawExposure(scaleExposure(value));
+	settings->exposure = value;
+	SaveSettings();
+}
+void SetVolume(int value) // 0-20
+{
+	if (settings->mute && GetMutedVolume() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
 		return SetRawVolume(scaleVolume(GetMutedVolume()));
 	
+	SetRawVolume(scaleVolume(value));
 	if (settings->jack || settings->audiosink != AUDIO_SINK_DEFAULT)
 		settings->headphones = value;
 	else
 		settings->speaker = value;
-
-	SetRawVolume(scaleVolume(value));
 	SaveSettings();
 }
 // monitored and set by thread in keymon
@@ -650,89 +695,34 @@ void SetHDMI(int value){};
 
 void SetMute(int value) {
 	settings->mute = value;
-	if (settings->mute) {
-		if (GetMutedVolume() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
-			SetRawVolume(scaleVolume(GetMutedVolume()));
-		// custom mute mode display settings
-		if(GetMutedBrightness() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
-			SetRawBrightness(scaleBrightness(GetMutedBrightness()));
-		if(GetMutedColortemp() != SETTINGS_DEFAULT_MUTE_NO_CHANGE) 
-			SetRawColortemp(scaleColortemp(GetMutedColortemp()));
-		if(GetMutedContrast() != SETTINGS_DEFAULT_MUTE_NO_CHANGE) 
-			SetRawContrast(scaleContrast(GetMutedContrast()));
-		if(GetMutedSaturation() != SETTINGS_DEFAULT_MUTE_NO_CHANGE) 
-			SetRawSaturation(scaleSaturation(GetMutedSaturation()));
-		if(GetMutedExposure() != SETTINGS_DEFAULT_MUTE_NO_CHANGE) 
-			SetRawExposure(scaleExposure(GetMutedExposure()));
-		if(is_brick && GetMuteDisablesDpad())
-			disableDpad(1);
-		if(is_brick && GetMuteEmulatesJoystick())
-			emulateJoystick(1);
-		if(GetMuteTurboA())
-			turboA(1);
-		if(GetMuteTurboB())
-			turboB(1);
-		if(GetMuteTurboX())
-			turboX(1);
-		if(GetMuteTurboY())
-			turboY(1);
-		if(GetMuteTurboL1())
-			turboL1(1);
-		if(GetMuteTurboL2())
-			turboL2(1);
-		if(GetMuteTurboR1())
-			turboR1(1);
-		if(GetMuteTurboR2())
-			turboR2(1);
-	}
-	else {
-		SetVolume(GetVolume());
-		SetBrightness(GetBrightness());
-		SetColortemp(GetColortemp());
-		SetContrast(GetContrast());
-		SetSaturation(GetSaturation());
-		SetExposure(GetExposure());
-		if(is_brick) {
-			if(GetMuteDisablesDpad())
-				disableDpad(0);
-			if(GetMuteEmulatesJoystick())
-				emulateJoystick(0);
-		}
-		if(GetMuteTurboA())
-			turboA(0);
-		if(GetMuteTurboB())
-			turboB(0);
-		if(GetMuteTurboX())
-			turboX(0);
-		if(GetMuteTurboY())
-			turboY(0);
-		if(GetMuteTurboL1())
-			turboL1(0);
-		if(GetMuteTurboL2())
-			turboL2(0);
-		if(GetMuteTurboR1())
-			turboR1(0);
-		if(GetMuteTurboR2())
-			turboR2(0);
-	}
-}
-void SetContrast(int value)
-{
-	SetRawContrast(scaleContrast(value));
-	settings->contrast = value;
-	SaveSettings();
-}
-void SetSaturation(int value)
-{
-	SetRawSaturation(scaleSaturation(value));
-	settings->saturation = value;
-	SaveSettings();
-}
-void SetExposure(int value)
-{
-	SetRawExposure(scaleExposure(value));
-	settings->exposure = value;
-	SaveSettings();
+
+	SetVolume(GetVolume());
+	SetBrightness(GetBrightness());
+	SetColortemp(GetColortemp());
+	SetContrast(GetContrast());
+	SetSaturation(GetSaturation());
+	SetExposure(GetExposure());
+
+	if(is_brick && GetMuteDisablesDpad())
+		disableDpad(settings->mute);
+	if(is_brick && GetMuteEmulatesJoystick())
+		emulateJoystick(settings->mute);
+	if(GetMuteTurboA())
+		turboA(settings->mute);
+	if(GetMuteTurboB())
+		turboB(settings->mute);
+	if(GetMuteTurboX())
+		turboX(settings->mute);
+	if(GetMuteTurboY())
+		turboY(settings->mute);
+	if(GetMuteTurboL1())
+		turboL1(settings->mute);
+	if(GetMuteTurboL2())
+		turboL2(settings->mute);
+	if(GetMuteTurboR1())
+		turboR1(settings->mute);
+	if(GetMuteTurboR2())
+		turboR2(settings->mute);
 }
 
 void SetMutedBrightness(int value)
@@ -1144,8 +1134,46 @@ static int get_a2dp_simple_control_name(char *buf, size_t buflen) {
     return 0;
 }
 
+static int get_usbc_card_num() {
+	FILE *fp = popen("cat /proc/asound/cards", "r");
+	if (!fp) return -1;
+
+	char line[256];
+	while (fgets(line, sizeof(line), fp)) {
+		if (strstr(line, "audiocodec") == NULL) { // skip the built-in codec
+			int card_num;
+			if (sscanf(line, " %d ", &card_num) == 1) {
+				pclose(fp);
+				return card_num;
+			}
+		}
+	}
+
+	pclose(fp);
+	return -1;
+}
+
+static int get_audiocodec_card_num() {
+	FILE *fp = popen("cat /proc/asound/cards", "r");
+	if (!fp) return -1;
+
+	char line[256];
+	while (fgets(line, sizeof(line), fp)) {
+		if (strstr(line, "audiocodec") != NULL) { // look for the built-in codec
+			int card_num;
+			if (sscanf(line, " %d ", &card_num) == 1) {
+				pclose(fp);
+				return card_num;
+			}
+		}
+	}
+
+	pclose(fp);
+	return -1;
+}
+
 void SetRawVolume(int val) { // in: 0-100
-	if (settings->mute) 
+	if (settings->mute && GetMutedVolume() != SETTINGS_DEFAULT_MUTE_NO_CHANGE)
 		val = scaleVolume(GetMutedVolume());
 
     if (GetAudioSink() == AUDIO_SINK_BLUETOOTH) {
@@ -1160,8 +1188,14 @@ void SetRawVolume(int val) { // in: 0-100
         }
     } 
 	else if (GetAudioSink() == AUDIO_SINK_USBDAC) {
-		// USB DAC path: use card 1
-		struct mixer *mixer = mixer_open(1);
+		// USB DAC path: grab the first card that is not called "audiocodec"
+		int card_num = get_usbc_card_num();
+		if(card_num < 0) {
+			printf("Failed to find USB audio card\n"); fflush(stdout);
+			return;
+		}
+
+		struct mixer *mixer = mixer_open(card_num);
 		if (!mixer) {
 			printf("Failed to open mixer\n"); fflush(stdout);
 			return;
@@ -1173,7 +1207,7 @@ void SetRawVolume(int val) { // in: 0-100
             const char *name = mixer_ctl_get_name(ctl);
             if (!name) continue;
 
-            if (strstr(name, "PCM") && (strstr(name, "Volume") || strstr(name, "volume"))) {
+            if ((strstr(name, "PCM") || strstr(name, "Playback")) && (strstr(name, "Volume") || strstr(name, "volume"))) {
                 if (mixer_ctl_get_type(ctl) == MIXER_CTL_TYPE_INT) {
                     int min = mixer_ctl_get_range_min(ctl);
                     int max = mixer_ctl_get_range_max(ctl);
@@ -1188,8 +1222,13 @@ void SetRawVolume(int val) { // in: 0-100
 		mixer_close(mixer);
 	}
 	else {
-        // Speaker path: use direct lookup by name
-		struct mixer *mixer = mixer_open(0);
+		// Speaker path: grab the card that is called "audiocodec"
+		int card_num = get_audiocodec_card_num();
+		if(card_num < 0) {
+			card_num = 0; // fallback to card 0 if we can't find it
+		}
+
+		struct mixer *mixer = mixer_open(card_num);
         if (!mixer) {
             printf("Failed to open mixer\n"); fflush(stdout);
             return;

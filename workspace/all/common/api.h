@@ -113,8 +113,6 @@ extern int currentshaderdsth;
 extern int currentshadertexw;
 extern int currentshadertexh;
 extern int should_rotate;
-extern volatile int useAutoCpu;
-
 enum {
 	ASSET_WHITE_PILL,
 	ASSET_BLACK_PILL,
@@ -279,6 +277,7 @@ SDL_Surface* GFX_init(int mode);
 #define GFX_scrollTextTexture PLAT_scrollTextTexture // (TTF_Font* font, const char* in_name,int x, int y, int w, int h, SDL_Color color, float transparency, SDL_mutex* fontMutex);
 #define GFX_flipHidden PLAT_flipHidden //(void)
 #define GFX_GL_screenCapture PLAT_GL_screenCapture //(void)
+#define GFX_setClearColor PLAT_setClearColor //(uint32_t color)
 
 void GFX_setMode(int mode);
 int GFX_hdmiChanged(void);
@@ -576,10 +575,10 @@ void LEDS_setProfile(int profile); // enum LightProfile
 void LEDS_updateLeds(bool indicator_only);
 
 enum {
-	CPU_SPEED_MENU,
-	CPU_SPEED_POWERSAVE,
-	CPU_SPEED_NORMAL,
-	CPU_SPEED_PERFORMANCE,
+	CPU_SPEED_AUTO = 0,
+	CPU_SPEED_PERFORMANCE = 1,
+	CPU_SPEED_POWERSAVE = 2,
+	CPU_SPEED_MENU = CPU_SPEED_AUTO, // legacy
 };
 #define PWR_setCPUSpeed PLAT_setCPUSpeed
 
@@ -632,12 +631,18 @@ void PLAT_animateSurface(
 	int target_opacity,
 	int layer
 );
+#define ANIM_LINEAR      0
+#define ANIM_EASE_OUT    1  // fast start, slows to stop
+#define ANIM_EASE_IN     2  // slow start, fast exit
+#define ANIM_EASE_IN_OUT 3  // slow start, fast middle, slow end
+
 void PLAT_animateAndFadeSurface(
 	SDL_Surface *inputSurface,
 	int x, int y, int target_x, int target_y, int w, int h, int duration_ms,
 	SDL_Surface *fadeSurface,
-	int fade_x, int fade_y, int fade_w, int fade_h,
-	int start_opacity, int target_opacity, int layer
+	int fade_x, int fade_y, int fade_target_x, int fade_target_y, int fade_w, int fade_h,
+	int start_opacity, int target_opacity, int layer,
+	int input_easing, int fade_easing, int intensity
 );
 
 void PLAT_animateSurfaceOpacity(SDL_Surface *inputSurface, int x, int y, int w, int h,
@@ -659,6 +664,7 @@ void PLAT_flip(SDL_Surface* screen, int sync);
 void PLAT_GL_Swap();
 void GFX_GL_Swap();
 unsigned char* PLAT_GL_screenCapture(int* outWidth, int* outHeight);
+void PLAT_setClearColor(uint32_t color);
 void PLAT_GPU_Flip();
 void PLAT_setShaders(int nr);
 void PLAT_resetShaders();
@@ -677,9 +683,13 @@ int PLAT_supportsDeepSleep(void);
 int PLAT_deepSleep(void);
 void PLAT_powerOff(int reboot);
 
+void Perf_setCPUMonitorEnabled(int enabled);
+int Perf_isCPUMonitorEnabled(void);
+int Perf_tryBeginCPUMonitor(void);
+void Perf_endCPUMonitor(void);
+
 void *PLAT_cpu_monitor(void *arg);
 void PLAT_setCPUSpeed(int speed); // enum
-void PLAT_setCustomCPUSpeed(int speed);
 // note: this affects the calling thread and every thread spawned from it (after)
 void PLAT_pinToCores(int core_type); // CPU_CORE_EFFICIENCY or CPU_CORE_PERFORMANCE
 void PLAT_setRumble(int strength);

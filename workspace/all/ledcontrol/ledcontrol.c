@@ -217,7 +217,7 @@ int main(int argc, char *argv[])
     int is_brick = exactMatch("brick", device);
     
 	InitSettings();
-    PWR_setCPUSpeed(CPU_SPEED_MENU);
+    PWR_setCPUSpeed(CPU_SPEED_AUTO);
 
     if (is_brick) {
         const char *brick_names[] = {"F1 key", "F2 key", "Top bar", "L&R triggers"};
@@ -227,7 +227,7 @@ int main(int argc, char *argv[])
         memcpy(lightnames, default_names, sizeof(default_names)); // Copy values
     }
     
-    SDL_Surface* screen = GFX_init(MODE_MENU);
+    SDL_Surface* screen = GFX_init(MODE_MAIN);
 	PAD_init();
 	PWR_init();
 

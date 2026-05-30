@@ -71,10 +71,22 @@ enum {
 	RA_SORT_COUNT
 };
 
+// Theme colors
+enum {
+	COLOR_MAIN = 1,
+	COLOR_ACCENT = 2,
+	COLOR_ACCENT2 = 3,
+	COLOR_LIST_TEXT = 4,
+	COLOR_LIST_TEXT_SELECTED = 5,
+	COLOR_HINT = 6,
+	COLOR_BACKGROUND = 7
+};
+
 typedef struct
 {
 	// Theme
-	int font;
+	char fontFile[256];
+	int fontStyle; // 0x00 = TTF_STYLE_NORMAL, 0x01 = TTF_STYLE_BOLD, etc.
 	uint32_t color1_255; // not screen mapped
 	uint32_t color2_255; // not screen mapped
 	uint32_t color3_255; // not screen mapped
@@ -97,9 +109,10 @@ typedef struct
 	bool clock24h;
 	bool showBatteryPercent;
 	bool showMenuAnimations;
-	bool showMenuTransitions;
+	int showMenuTransitions; // 0=off, 1=snappy, 2=comfy
 	bool showRecents;
 	bool showTools;
+	bool showCollections;
 	bool showGameArt;
 	bool showFolderNamesAtRoot;
 	bool romsUseFolderBackground;
@@ -121,7 +134,7 @@ typedef struct
 
 	// Haptic
 	bool haptics;
-	
+
 	// Networking
 	bool ntp;
 	int currentTimezone; // index of timezone in tz database
@@ -144,6 +157,7 @@ typedef struct
 	char raPassword[128];
 	bool raHardcoreMode;
 	char raToken[64];           // API token (stored after successful auth)
+	char raServerUsername[64];  // Server's internal username (from avatar URL, used for sync hash)
 	bool raAuthenticated;       // Whether we have a valid token
 	bool raShowNotifications;   // Show achievement unlock notifications
 	int raNotificationDuration; // Duration for achievement notifications (1-5 seconds)
@@ -152,7 +166,13 @@ typedef struct
 
 } NextUISettings;
 
-#define CFG_DEFAULT_FONT_ID 1  // Next
+// Transition mode constants
+#define TRANSITION_OFF    0
+#define TRANSITION_SNAPPY 1
+#define TRANSITION_COMFY  2
+
+#define CFG_DEFAULT_FONT_FILE "font1.ttf"  // Next
+#define CFG_DEFAULT_FONT_STYLE 0x01 // TTF_STYLE_BOLD (MinUI default)
 #define CFG_DEFAULT_COLOR1 0xffffffU
 #define CFG_DEFAULT_COLOR2 0x9b2257U
 #define CFG_DEFAULT_COLOR3 0x1e2329U
@@ -160,13 +180,21 @@ typedef struct
 #define CFG_DEFAULT_COLOR5 0x000000U
 #define CFG_DEFAULT_COLOR6 0xffffffU
 #define CFG_DEFAULT_COLOR7 0x000000U
+#define CFG_DEFAULT_COLOR_MAIN CFG_DEFAULT_COLOR1
+#define CFG_DEFAULT_COLOR_ACCENT CFG_DEFAULT_COLOR2
+#define CFG_DEFAULT_COLOR_ACCENT2 CFG_DEFAULT_COLOR3
+#define CFG_DEFAULT_COLOR_LIST_TEXT CFG_DEFAULT_COLOR4
+#define CFG_DEFAULT_COLOR_LIST_TEXT_SELECTED CFG_DEFAULT_COLOR5
+#define CFG_DEFAULT_COLOR_HINT CFG_DEFAULT_COLOR6
+#define CFG_DEFAULT_COLOR_BACKGROUND CFG_DEFAULT_COLOR7
 #define CFG_DEFAULT_THUMBRADIUS 20 // unscaled!
 #define CFG_DEFAULT_SHOWCLOCK false
 #define CFG_DEFAULT_CLOCK24H true
 #define CFG_DEFAULT_SHOWBATTERYPERCENT false
 #define CFG_DEFAULT_SHOWMENUANIMATIONS true
-#define CFG_DEFAULT_SHOWMENUTRANSITIONS true
+#define CFG_DEFAULT_SHOWMENUTRANSITIONS TRANSITION_SNAPPY
 #define CFG_DEFAULT_SHOWRECENTS true
+#define CFG_DEFAULT_SHOWCOLLECTIONS true
 #define CFG_DEFAULT_SHOWGAMEART true
 #define CFG_DEFAULT_SHOWFOLDERNAMESATROOT true
 #define CFG_DEFAULT_GAMESWITCHERSCALING GFX_SCALE_FULLSCREEN
@@ -204,21 +232,31 @@ typedef struct
 #define CFG_DEFAULT_RA_PASSWORD ""
 #define CFG_DEFAULT_RA_HARDCOREMODE false
 #define CFG_DEFAULT_RA_TOKEN ""
+#define CFG_DEFAULT_RA_SERVER_USERNAME ""
 #define CFG_DEFAULT_RA_AUTHENTICATED false
 #define CFG_DEFAULT_RA_SHOW_NOTIFICATIONS true
 #define CFG_DEFAULT_RA_NOTIFICATION_DURATION 3
 #define CFG_DEFAULT_RA_PROGRESS_NOTIFICATION_DURATION 1
 #define CFG_DEFAULT_RA_ACHIEVEMENT_SORT_ORDER RA_SORT_UNLOCKED_FIRST
 
+// Transition animation parameters (fixed per mode)
+#define TRANSITION_SNAPPY_DURATION  150
+#define TRANSITION_COMFY_DURATION   250
+#define TRANSITION_CURVE            1   // ANIM_EASE_OUT
+#define TRANSITION_INTENSITY        3
+
 void CFG_init(FontLoad_callback_t fontCallback, ColorSet_callback_t ccb);
 void CFG_print(void);
 void CFG_get(const char *key, char * value);
 // void CFG_defaults(NextUISettings*);
-//  The font id to use as the UI font.
-//  0 - Default MinUI font
-//  1 - Default NextUI font (default)
-int CFG_getFontId(void);
-void CFG_setFontId(int fontid);
+// The font filename to use as the UI font.
+// Built-in: "font1.ttf" (Next, default), "font2.ttf" (OG)
+// Custom fonts go in RES_PATH alongside built-in fonts.
+const char* CFG_getFontFile(void);
+void CFG_setFontFile(const char* filename);
+// The font style to use for the UI font.
+int CFG_getFontStyle(void);
+void CFG_setFontStyle(int style);
 // The colors to use for the UI. These are 0xRRGGBB values.
 // 0 - Color1 (primary hint/asset colour)
 // 1 - Color2 (accent colour)
@@ -247,9 +285,9 @@ void CFG_setShowBatteryPercent(bool show);
 // Show/hide menu animations in main menu.
 bool CFG_getMenuAnimations(void);
 void CFG_setMenuAnimations(bool show);
-// Show/hide menu transitions between screens in main menu.
-bool CFG_getMenuTransitions(void);
-void CFG_setMenuTransitions(bool show);
+// Menu transition mode: TRANSITION_OFF, TRANSITION_SNAPPY, TRANSITION_COMFY.
+int CFG_getMenuTransitions(void);
+void CFG_setMenuTransitions(int mode);
 // Set thumbnail rounding radius.
 int CFG_getThumbnailRadius(void);
 void CFG_setThumbnailRadius(int radius);
@@ -259,6 +297,9 @@ void CFG_setShowRecents(bool show);
 // Show/hide tools folder in the main menu.
 bool CFG_getShowTools(void);
 void CFG_setShowTools(bool show);
+// Show/hide collections in the main menu.
+bool CFG_getShowCollections(void);
+void CFG_setShowCollections(bool show);
 // Show/hide game art in the main menu.
 bool CFG_getShowGameArt(void);
 void CFG_setShowGameArt(bool show);
@@ -345,6 +386,14 @@ bool CFG_getRAHardcoreMode(void);
 void CFG_setRAHardcoreMode(bool enable);
 const char* CFG_getRAToken(void);
 void CFG_setRAToken(const char* token);
+const char* CFG_getRAServerUsername(void);
+void CFG_setRAServerUsername(const char* username);
+// Extract the RA server's internal username from any string containing
+// "/UserPic/USERNAME.png" (e.g. an avatar URL or raw JSON) and persist
+// it via CFG_setRAServerUsername().  Returns true if a username was
+// extracted and stored; returns false (and leaves any existing stored
+// value untouched) if the pattern is missing or malformed.
+bool CFG_setRAServerUsernameFromAvatarUrl(const char* str);
 bool CFG_getRAAuthenticated(void);
 void CFG_setRAAuthenticated(bool authenticated);
 bool CFG_getRAShowNotifications(void);

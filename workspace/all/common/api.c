@@ -215,6 +215,49 @@ int currentshadertexh = 0;
 
 int should_rotate = 0;
 
+static pthread_mutex_t perf_cpu_monitor_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int perf_cpu_monitor_enabled = 0;
+static int perf_cpu_monitor_running = 0;
+
+void Perf_setCPUMonitorEnabled(int enabled)
+{
+    pthread_mutex_lock(&perf_cpu_monitor_mutex);
+    perf_cpu_monitor_enabled = enabled;
+    pthread_mutex_unlock(&perf_cpu_monitor_mutex);
+}
+
+int Perf_isCPUMonitorEnabled(void)
+{
+    int enabled;
+
+    pthread_mutex_lock(&perf_cpu_monitor_mutex);
+    enabled = perf_cpu_monitor_enabled;
+    pthread_mutex_unlock(&perf_cpu_monitor_mutex);
+
+    return enabled;
+}
+
+int Perf_tryBeginCPUMonitor(void)
+{
+    int should_run = 0;
+
+    pthread_mutex_lock(&perf_cpu_monitor_mutex);
+    if (perf_cpu_monitor_enabled && !perf_cpu_monitor_running) {
+        perf_cpu_monitor_running = 1;
+        should_run = 1;
+    }
+    pthread_mutex_unlock(&perf_cpu_monitor_mutex);
+
+    return should_run;
+}
+
+void Perf_endCPUMonitor(void)
+{
+    pthread_mutex_lock(&perf_cpu_monitor_mutex);
+    perf_cpu_monitor_running = 0;
+    pthread_mutex_unlock(&perf_cpu_monitor_mutex);
+}
+
 FALLBACK_IMPLEMENTATION void PLAT_pinToCores(int core_type)
 {
 	// no-op
@@ -268,11 +311,11 @@ int GFX_loadSystemFont(const char *fontPath)
 	font.tiny = TTF_OpenFont(fontPath, SCALE1(FONT_TINY));
 	font.micro = TTF_OpenFont(fontPath, SCALE1(FONT_MICRO));
 
-	TTF_SetFontStyle(font.large, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.medium, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.small, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.tiny, TTF_STYLE_BOLD);
-	TTF_SetFontStyle(font.micro, TTF_STYLE_BOLD);
+	TTF_SetFontStyle(font.large, CFG_getFontStyle());
+	TTF_SetFontStyle(font.medium, CFG_getFontStyle());
+	TTF_SetFontStyle(font.small, CFG_getFontStyle());
+	TTF_SetFontStyle(font.tiny, CFG_getFontStyle());
+	TTF_SetFontStyle(font.micro, CFG_getFontStyle());
 
 	return 0;
 }
@@ -281,14 +324,14 @@ int GFX_updateColors(void)
 {
 	// We are currently micro managing all of these screen-mapped colors,
 	// should just move this to the caller.
-	THEME_COLOR1 = mapUint(CFG_getColor(1));
-	THEME_COLOR2 = mapUint(CFG_getColor(2));
-	THEME_COLOR3 = mapUint(CFG_getColor(3));
-	THEME_COLOR4 = mapUint(CFG_getColor(4));
-	THEME_COLOR5 = mapUint(CFG_getColor(5));
-	THEME_COLOR6 = mapUint(CFG_getColor(6));
-	THEME_COLOR7 = mapUint(CFG_getColor(7));
-	ALT_BUTTON_TEXT_COLOR = uintToColour(CFG_getColor(3));
+	THEME_COLOR1 = mapUint(CFG_getColor(COLOR_MAIN));
+	THEME_COLOR2 = mapUint(CFG_getColor(COLOR_ACCENT));
+	THEME_COLOR3 = mapUint(CFG_getColor(COLOR_ACCENT2));
+	THEME_COLOR4 = mapUint(CFG_getColor(COLOR_LIST_TEXT));
+	THEME_COLOR5 = mapUint(CFG_getColor(COLOR_LIST_TEXT_SELECTED));
+	THEME_COLOR6 = mapUint(CFG_getColor(COLOR_HINT));
+	THEME_COLOR7 = mapUint(CFG_getColor(COLOR_BACKGROUND));
+	ALT_BUTTON_TEXT_COLOR = uintToColour(CFG_getColor(COLOR_ACCENT2));
 
 	return 0;
 }
@@ -307,6 +350,11 @@ SDL_Surface *GFX_init(int mode)
 	// tried adding to PWR_init() but that was no good (not sure why)
 	
 	CFG_init(GFX_loadSystemFont, GFX_updateColors);
+
+	// by default, we will clear with whatever background color the user prefers
+	// if MODE_MENU /e.g. minarch, clear with default black)
+	if(mode == MODE_MAIN)
+		GFX_setClearColor(mapUint(CFG_getColor(COLOR_BACKGROUND)));
 
 	// We always have to symlink, does not depend on NTP being enabled
 	PLAT_initTimezones();
@@ -454,72 +502,81 @@ uint32_t GFX_extract_average_color(const void *data, unsigned width, unsigned he
 		return 0;
 	}
 
-	const uint16_t *pixels = (const uint16_t *)data;
-	int pixel_count = width * height;
+	const uint32_t *pixels = (const uint32_t *)data;
+	int pixel_count = 0;
 
 	uint64_t total_r = 0;
 	uint64_t total_g = 0;
 	uint64_t total_b = 0;
+	uint64_t total_rcolor = 0;
+	uint64_t total_gcolor = 0;
+	uint64_t total_bcolor = 0;
 	uint32_t colorful_pixel_count = 0;
 
-	for (unsigned y = 0; y < height; y++)
+	// Downsample 7x7 instead of 8x8 to de-emphasize effect of
+	// repeated scrolling tiles (intentionally interfere with patterns)
+	for (unsigned y = 0; y < height; y+=7)
 	{
-		for (unsigned x = 0; x < width; x++)
+		for (unsigned x = 0; x < width; x+=7)
 		{
-			uint16_t pixel = pixels[y * (pitch / 2) + x];
+			uint32_t pixel = pixels[y * (pitch / 4) + x];
 
-			uint8_t r = ((pixel & 0xF800) >> 11) << 3;
-			uint8_t g = ((pixel & 0x07E0) >> 5) << 2;
-			uint8_t b = (pixel & 0x001F) << 3;
+			// input pixel format: AABBGGRR
+			uint8_t r =  pixel        & 0xFF;
+			uint8_t g = (pixel >> 8)  & 0xFF;
+			uint8_t b = (pixel >> 16) & 0xFF;
 
-			r |= r >> 5;
-			g |= g >> 6;
-			b |= b >> 5;
+			// max_c = max(max(r, g), b)
+			uint8_t max_c = r > g ? r : g;
+			max_c = max_c > b ? max_c : b;
 
-			uint8_t max_c = fmaxf(fmaxf(r, g), b);
-			uint8_t min_c = fminf(fminf(r, g), b);
+			// min_c = min(min(r, g), b)
+			uint8_t min_c = r < g ? r : g;
+			min_c = min_c < b ? min_c : b;
+
 			uint8_t saturation = max_c == 0 ? 0 : (max_c - min_c) * 255 / max_c;
 
+			total_r += r;
+			total_g += g;
+			total_b += b;
+			pixel_count++;
 			if (saturation > 50 && max_c > 50)
 			{
-				total_r += r;
-				total_g += g;
-				total_b += b;
+				total_rcolor += r;
+				total_gcolor += g;
+				total_bcolor += b;
 				colorful_pixel_count++;
 			}
 		}
 	}
 
-	if (colorful_pixel_count == 0)
+	if (colorful_pixel_count > 0)
 	{
-
-		colorful_pixel_count = pixel_count;
-		total_r = total_g = total_b = 0;
-		for (unsigned y = 0; y < height; y++)
-		{
-			for (unsigned x = 0; x < width; x++)
-			{
-				uint16_t pixel = pixels[y * (pitch / 2) + x];
-				uint8_t r = ((pixel & 0xF800) >> 11) << 3;
-				uint8_t g = ((pixel & 0x07E0) >> 5) << 2;
-				uint8_t b = (pixel & 0x001F) << 3;
-
-				r |= r >> 5;
-				g |= g >> 6;
-				b |= b >> 5;
-
-				total_r += r;
-				total_g += g;
-				total_b += b;
-			}
-		}
+		total_r = total_rcolor;
+		total_g = total_gcolor;
+		total_b = total_bcolor;
+		pixel_count = colorful_pixel_count;
 	}
 
-	uint8_t avg_r = total_r / colorful_pixel_count;
-	uint8_t avg_g = total_g / colorful_pixel_count;
-	uint8_t avg_b = total_b / colorful_pixel_count;
+	uint8_t ambient_r = total_r / pixel_count;
+	uint8_t ambient_g = total_g / pixel_count;
+	uint8_t ambient_b = total_b / pixel_count;
 
-	return (avg_r << 16) | (avg_g << 8) | avg_b;
+	// keep track of last invocation's values
+	// in order to blend them
+	static uint16_t amb_prev_r = 0;
+	static uint16_t amb_prev_g = 0;
+	static uint16_t amb_prev_b = 0;
+
+	uint32_t average_color = (((amb_prev_r + ambient_r) / 2) << 16) |
+		(((amb_prev_g + ambient_g) / 2) << 8) |
+		((amb_prev_b + ambient_b) / 2);
+
+	amb_prev_r = ambient_r;
+	amb_prev_g = ambient_g;
+	amb_prev_b = ambient_b;
+
+	return average_color;
 }
 
 void GFX_setAmbientColor(const void *data, unsigned width, unsigned height, size_t pitch, int mode)
@@ -533,22 +590,18 @@ void GFX_setAmbientColor(const void *data, unsigned width, unsigned height, size
 	{
 		(lightsAmbient)[2].color1 = dominant_color;
 		(lightsAmbient)[2].effect = 4;
-		(lightsAmbient)[2].brightness = 100;
 	}
 	if (mode == 1 || mode == 3)
 	{
 		(lightsAmbient)[0].color1 = dominant_color;
 		(lightsAmbient)[0].effect = 4;
-		(lightsAmbient)[0].brightness = 100;
 		(lightsAmbient)[1].color1 = dominant_color;
 		(lightsAmbient)[1].effect = 4;
-		(lightsAmbient)[1].brightness = 100;
 	}
 	if (mode == 1 || mode == 4 || mode == 5)
 	{
 		(lightsAmbient)[3].color1 = dominant_color;
 		(lightsAmbient)[3].effect = 4;
-		(lightsAmbient)[3].brightness = 100;
 	}
 }
 
@@ -1818,7 +1871,7 @@ void GFX_blitMessage(TTF_Font *font, char *msg, SDL_Surface *dst, SDL_Rect *dst_
 
 		if (len)
 		{
-			text = TTF_RenderUTF8_Blended_Wrapped(font, line, COLOR_WHITE, dst_rect->w);
+			text = TTF_RenderUTF8_Blended_Wrapped(font, line, uintToColour(CFG_getColor(COLOR_LIST_TEXT)), dst_rect->w);
 			int x = dst_rect->x;
 			x += (dst_rect->w - text->w) / 2;
 			SDL_BlitSurface(text, NULL, dst, &(SDL_Rect){x, y});
@@ -1878,6 +1931,7 @@ int GFX_blitHardwareIndicator(SDL_Surface *dst, int x, int y, IndicatorType indi
 	int setting_min;
 	int setting_max;
 	int asset;
+	bool readonly = false;
 	
 	int ow = SCALE1(PILL_SIZE + SETTINGS_WIDTH + 10 + 4);
 	int ox = x;
@@ -1893,6 +1947,7 @@ int GFX_blitHardwareIndicator(SDL_Surface *dst, int x, int y, IndicatorType indi
 		setting_min = BRIGHTNESS_MIN;
 		setting_max = BRIGHTNESS_MAX;
 		asset = ASSET_BRIGHTNESS;
+		readonly = GetMute() && GetMutedBrightness() != SETTINGS_DEFAULT_MUTE_NO_CHANGE;
 	}
 	else if (indicator_type == INDICATOR_COLORTEMP)
 	{
@@ -1900,6 +1955,7 @@ int GFX_blitHardwareIndicator(SDL_Surface *dst, int x, int y, IndicatorType indi
 		setting_min = COLORTEMP_MIN;
 		setting_max = COLORTEMP_MAX;
 		asset = ASSET_COLORTEMP;
+		readonly = GetMute() && GetMutedColortemp() != SETTINGS_DEFAULT_MUTE_NO_CHANGE;
 	}
 	else // INDICATOR_VOLUME
 	{
@@ -1910,8 +1966,9 @@ int GFX_blitHardwareIndicator(SDL_Surface *dst, int x, int y, IndicatorType indi
 			asset = (setting_value > 0 ? ASSET_BLUETOOTH : ASSET_BLUETOOTH_OFF);
 		else
 			asset = (setting_value > 0 ? ASSET_VOLUME : ASSET_VOLUME_MUTE);
+		readonly = GetMute() && GetMutedVolume() != SETTINGS_DEFAULT_MUTE_NO_CHANGE;
 	}
-	
+
 	// Draw the icon
 	SDL_Rect asset_rect;
 	GFX_assetRect(asset, &asset_rect);
@@ -1925,11 +1982,23 @@ int GFX_blitHardwareIndicator(SDL_Surface *dst, int x, int y, IndicatorType indi
 	GFX_blitPillColor(gfx.mode == MODE_MAIN ? ASSET_BAR_BG : ASSET_BAR_BG_MENU, dst, 
 		&(SDL_Rect){ox, bar_y, SCALE1(SETTINGS_WIDTH), SCALE1(SETTINGS_SIZE)}, THEME_COLOR3, RGB_WHITE);
 	
-	// Draw the progress bar fill
-	float percent = ((float)(setting_value - setting_min) / (setting_max - setting_min));
-	if (indicator_type == 1 || indicator_type == 3 || setting_value > 0)
+	// Draw the lock icon centered over the bar if the setting is read-only
+	if (readonly)
 	{
-		GFX_blitPillDark(ASSET_BAR, dst, &(SDL_Rect){ox, bar_y, SCALE1(SETTINGS_WIDTH) * percent, SCALE1(SETTINGS_SIZE)});
+		SDL_Rect lock_rect;
+		GFX_assetRect(ASSET_LOCK, &lock_rect);
+		int lx = ox + (SCALE1(SETTINGS_WIDTH) - lock_rect.w) / 2;
+		int ly = bar_y + (SCALE1(SETTINGS_SIZE) - lock_rect.h) / 2;
+		GFX_blitAssetColor(ASSET_LOCK, NULL, dst, &(SDL_Rect){lx, ly}, THEME_COLOR6_255);
+	}
+	else {
+		// Draw the progress bar fill
+		float percent = ((float)(setting_value - setting_min) / (setting_max - setting_min));
+		if (indicator_type == 1 || indicator_type == 3 || setting_value > 0)
+		{
+			if(!readonly)
+				GFX_blitPillDark(ASSET_BAR, dst, &(SDL_Rect){ox, bar_y, SCALE1(SETTINGS_WIDTH) * percent, SCALE1(SETTINGS_SIZE)});
+		}
 	}
 	
 	return ow;
@@ -1966,6 +2035,7 @@ int GFX_blitHardwareGroup(SDL_Surface *dst, int show_setting)
 		// no need to handle in PLAT_updateNetworkStatus,
 		// this one is async anyway
 		int show_bt = BT_isConnected();
+		int show_external_audio = GetAudioSink() != AUDIO_SINK_DEFAULT;
 		bool show_clock = CFG_getShowClock();
 		SDL_Rect battery_rect = asset_rects[ASSET_BATTERY];
 
@@ -1996,6 +2066,12 @@ int GFX_blitHardwareGroup(SDL_Surface *dst, int show_setting)
 			{
 				SDL_Rect wifi_rect = asset_rects[ASSET_WIFI];
 				ow += wifi_rect.w + SCALE1(BUTTON_MARGIN);
+			}
+
+			if (show_external_audio)
+			{
+				SDL_Rect external_audio_rect = asset_rects[ASSET_AUDIO];
+				ow += external_audio_rect.w + SCALE1(BUTTON_MARGIN);
 			}
 
 			ow += battery_rect.w + SCALE1(BUTTON_MARGIN);
@@ -2046,6 +2122,17 @@ int GFX_blitHardwareGroup(SDL_Surface *dst, int show_setting)
 
 				GFX_blitAssetColor(asset, NULL, dst, &(SDL_Rect){x, y}, THEME_COLOR6);
 				ox += wifi_rect.w + SCALE1(BUTTON_MARGIN);
+			}
+
+			if (show_external_audio)
+			{
+				int asset = ASSET_AUDIO;
+				SDL_Rect external_audio_rect = asset_rects[asset];
+				int x = ox;
+				int y = oy + (SCALE1(PILL_SIZE) - external_audio_rect.h) / 2;
+
+				GFX_blitAssetColor(asset, NULL, dst, &(SDL_Rect){x, y}, THEME_COLOR6);
+				ox += external_audio_rect.w + SCALE1(BUTTON_MARGIN);
 			}
 
 			int battery_x = ox;
@@ -2716,7 +2803,7 @@ size_t SND_batchSamples_fixed_rate(const SND_Frame *frames, size_t frame_count)
 		pthread_mutex_unlock(&audio_mutex);
 
 		total_consumed_frames += written_frames;
-		// No need to free - using static buffers
+		free(resampled.frames);
 	}
 
 	return total_consumed_frames;
@@ -3603,9 +3690,9 @@ static void *PWR_monitorBattery(void *arg)
 		int interval = SDL_AtomicGet(&pwr_ctx->update_secs);
 		if (interval <= 0)
 			interval = 1;
-		sleep(interval);
 		PWR_updateBatteryStatus();
 		PWR_updateNetworkStatus();
+		sleep(interval);
 	}
 	return NULL;
 }

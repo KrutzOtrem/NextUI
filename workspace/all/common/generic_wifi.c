@@ -22,7 +22,7 @@
 bool PLAT_hasWifi() { return true; }
 
 #define WIFI_INTERFACE "wlan0"
-#define WPA_CLI_CMD "wpa_cli -p /etc/wifi/sockets -i " WIFI_INTERFACE
+#define WPA_CLI_CMD "wpa_cli -p " WIFI_SOCK_DIR " -i " WIFI_INTERFACE
 
 #define wifilog(fmt, ...) \
     LOG_note(PLAT_wifiDiagnosticsEnabled() ? LOG_INFO : LOG_DEBUG, fmt, ##__VA_ARGS__)
@@ -331,6 +331,10 @@ int PLAT_wifiConnection(struct WIFI_connection *connection_info)
 			connection_info->link_speed = (int)atof(bitrate + 11);
 		}
 	}
+    else {
+        wifilog("iw command is not supported.");
+        connection_info->rssi = -60;
+    }
 
 	wifilog("Connected AP: %s\n", connection_info->ssid);
 	wifilog("IP address: %s\n", connection_info->ip);
@@ -557,11 +561,11 @@ void PLAT_wifiConnectPass(const char *ssid, WifiSecurityType sec, const char* pa
 		wifilog("Using existing network configuration...\n");
 	}
 	
-	// Enable and select network
-	wifilog("Enabling and selecting network %d...\n", network_id);
+	// Enable network
+	wifilog("Enabling network %d...\n", network_id);
 	snprintf(cmd, sizeof(cmd), "%s enable_network %d 2>/dev/null", WPA_CLI_CMD, network_id);
 	system(cmd);
-	snprintf(cmd, sizeof(cmd), "%s select_network %d 2>/dev/null", WPA_CLI_CMD, network_id);
+	snprintf(cmd, sizeof(cmd), "%s reassociate 2>/dev/null", WPA_CLI_CMD);
 	system(cmd);
 	
 	// Save configuration
@@ -574,11 +578,6 @@ void PLAT_wifiConnectPass(const char *ssid, WifiSecurityType sec, const char* pa
 		usleep(500000);
 		if (PLAT_wifiConnected()) {
 			wifilog("PLAT_wifiConnectPass: connected successfully after %d attempts\n", i + 1);
-			// Request IP via DHCP
-			wifilog("Requesting IP address via DHCP...\n");
-			char dhcp_cmd[128];
-			snprintf(dhcp_cmd, sizeof(dhcp_cmd), "udhcpc -i %s -n -q 2>/dev/null &", WIFI_INTERFACE);
-			system(dhcp_cmd);
 			return;
 		}
 	}
